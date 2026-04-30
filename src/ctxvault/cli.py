@@ -349,6 +349,52 @@ def build_parser() -> argparse.ArgumentParser:
     knowledge_search.add_argument("--scope-value")
     knowledge_search.add_argument("--limit", type=int, default=5)
 
+    context_slice_rebuild = subcommands.add_parser("context-slice-rebuild", help="Rebuild deterministic local context slice indexes")
+    context_slice_rebuild.add_argument("--root", type=Path, default=project_root())
+
+    context_search = subcommands.add_parser("context-search", help="Search deterministic local context slices")
+    context_search.add_argument("--root", type=Path, default=project_root())
+    context_search.add_argument("--query", required=True)
+    context_search.add_argument("--scope-kind")
+    context_search.add_argument("--scope-value")
+    context_search.add_argument("--workstream-ref")
+    context_search.add_argument("--limit", type=int, default=10)
+    context_search.add_argument("--include-blocked", action="store_true")
+
+    context_selection_preflight = subcommands.add_parser(
+        "context-selection-preflight",
+        help="Run privacy preflight over selected context slice refs",
+    )
+    context_selection_preflight.add_argument("--root", type=Path, default=project_root())
+    context_selection_preflight.add_argument("--slice-ref", action="append", required=True)
+    context_selection_preflight.add_argument("--target-kind", required=True)
+    context_selection_preflight.add_argument("--query")
+    context_selection_preflight.add_argument("--workstream-ref")
+    context_selection_preflight.add_argument("--write-receipt", action="store_true")
+
+    logical_purge_plan = subcommands.add_parser(
+        "logical-purge-plan",
+        help="Plan a logical purge of derived privacy-sensitive context data",
+    )
+    logical_purge_plan.add_argument("--root", type=Path, default=project_root())
+    logical_purge_plan.add_argument("--source-ref", action="append")
+    logical_purge_plan.add_argument("--slice-ref", action="append")
+    logical_purge_plan.add_argument("--include-projections", action="store_true")
+
+    logical_purge_apply = subcommands.add_parser(
+        "logical-purge-apply",
+        help="Apply a reviewed logical purge of derived context data",
+    )
+    logical_purge_apply.add_argument("--root", type=Path, default=project_root())
+    logical_purge_apply.add_argument("--source-ref", action="append")
+    logical_purge_apply.add_argument("--slice-ref", action="append")
+    logical_purge_apply.add_argument("--include-projections", action="store_true")
+    logical_purge_apply.add_argument("--reviewer", required=True)
+    logical_purge_apply.add_argument("--notes")
+    logical_purge_apply.add_argument("--policy-json-path", type=Path)
+    logical_purge_apply.add_argument("--backup-json-path", type=Path)
+    logical_purge_apply.add_argument("--confirm", action="store_true")
+
     ingest_knowledge = subcommands.add_parser("ingest-knowledge", help="Import local documents as deterministic knowledge artifacts")
     ingest_knowledge.add_argument("--root", type=Path, default=project_root())
     ingest_knowledge.add_argument("--path", type=Path, required=True)
@@ -487,6 +533,7 @@ def build_parser() -> argparse.ArgumentParser:
     emit_agents_projection.add_argument("--output-path", type=Path, required=True)
     emit_agents_projection.add_argument("--receipt-output-path", type=Path, required=True)
     emit_agents_projection.add_argument("--memory-limit", type=int, default=5)
+    emit_agents_projection.add_argument("--slice-ref", action="append", default=[])
 
     emit_claude_projection = subcommands.add_parser("emit-claude-projection", help="Render a CLAUDE.md projection and emit a projection receipt")
     emit_claude_projection.add_argument("--root", type=Path, default=project_root())
@@ -494,6 +541,7 @@ def build_parser() -> argparse.ArgumentParser:
     emit_claude_projection.add_argument("--output-path", type=Path, required=True)
     emit_claude_projection.add_argument("--receipt-output-path", type=Path, required=True)
     emit_claude_projection.add_argument("--memory-limit", type=int, default=5)
+    emit_claude_projection.add_argument("--slice-ref", action="append", default=[])
 
     emit_wiki_projection = subcommands.add_parser("emit-wiki-projection", help="Render a workstream wiki markdown projection and emit a projection receipt")
     emit_wiki_projection.add_argument("--root", type=Path, default=project_root())
@@ -501,6 +549,7 @@ def build_parser() -> argparse.ArgumentParser:
     emit_wiki_projection.add_argument("--output-path", type=Path, required=True)
     emit_wiki_projection.add_argument("--receipt-output-path", type=Path, required=True)
     emit_wiki_projection.add_argument("--memory-limit", type=int, default=5)
+    emit_wiki_projection.add_argument("--slice-ref", action="append", default=[])
 
     emit_backup = subcommands.add_parser("emit-backup-receipt", help="Capture a deterministic workspace backup bundle and write a receipt")
     emit_backup.add_argument("--root", type=Path, default=project_root())
@@ -1185,6 +1234,74 @@ def main(argv: list[str] | None = None) -> int:
             print(json.dumps(result, indent=2, sort_keys=True))
             return 0
 
+        if args.command == "context-slice-rebuild":
+            surface = CtxVaultSurface(CtxVault(default_layout(args.root.resolve())))
+            result = surface.context_slice_rebuild()
+            print(json.dumps(result, indent=2, sort_keys=True))
+            return 0
+
+        if args.command == "context-search":
+            surface = CtxVaultSurface(CtxVault(default_layout(args.root.resolve())))
+            result = surface.context_search(
+                args.query,
+                scope_kind=args.scope_kind,
+                scope_value=args.scope_value,
+                workstream_ref=args.workstream_ref,
+                limit=args.limit,
+                include_blocked=args.include_blocked,
+            )
+            print(json.dumps(result, indent=2, sort_keys=True))
+            return 0
+
+        if args.command == "context-selection-preflight":
+            surface = CtxVaultSurface(CtxVault(default_layout(args.root.resolve())))
+            result = surface.context_selection_preflight(
+                args.slice_ref,
+                target_kind=args.target_kind,
+                query=args.query,
+                workstream_ref=args.workstream_ref,
+                write_receipt=args.write_receipt,
+            )
+            print(json.dumps(result, indent=2, sort_keys=True))
+            return 0
+
+        if args.command == "logical-purge-plan":
+            surface = CtxVaultSurface(CtxVault(default_layout(args.root.resolve())))
+            result = surface.logical_purge_plan(
+                source_refs=args.source_ref,
+                slice_refs=args.slice_ref,
+                include_projections=args.include_projections,
+            )
+            print(json.dumps(result, indent=2, sort_keys=True))
+            return 0
+
+        if args.command == "logical-purge-apply":
+            root = args.root.resolve()
+            surface = CtxVaultSurface(CtxVault(default_layout(root)))
+            policy_path = args.policy_json_path.resolve() if args.policy_json_path else default_policy_path(project_root())
+            backup_path = args.backup_json_path.resolve() if args.backup_json_path else default_backup_path(project_root())
+            if not policy_path.exists():
+                raise ValueError(f"missing policy payload at {policy_path}")
+            if not backup_path.exists():
+                raise ValueError(f"missing backup receipt at {backup_path}")
+            policy_payload = json.loads(policy_path.read_text(encoding="utf-8"))
+            backup_payload = CtxVaultPolicy.load_backup_receipt(
+                backup_path,
+                refresh_timestamps=args.backup_json_path is None,
+            )
+            result = surface.logical_purge_apply(
+                source_refs=args.source_ref,
+                slice_refs=args.slice_ref,
+                include_projections=args.include_projections,
+                reviewer=args.reviewer,
+                notes=args.notes,
+                policy_payload=policy_payload,
+                backup_receipt=backup_payload,
+                confirm=args.confirm,
+            )
+            print(json.dumps(result, indent=2, sort_keys=True))
+            return 0
+
         if args.command == "ingest-knowledge":
             vault = CtxVault(default_layout(args.root.resolve()))
             receipts = import_knowledge_path(
@@ -1524,6 +1641,7 @@ def main(argv: list[str] | None = None) -> int:
                     else (root / args.receipt_output_path).resolve()
                 ),
                 memory_limit=args.memory_limit,
+                selected_slice_refs=args.slice_ref,
             )
             print(json.dumps(result, indent=2, sort_keys=True))
             return 0
@@ -1540,6 +1658,7 @@ def main(argv: list[str] | None = None) -> int:
                     else (root / args.receipt_output_path).resolve()
                 ),
                 memory_limit=args.memory_limit,
+                selected_slice_refs=args.slice_ref,
             )
             print(json.dumps(result, indent=2, sort_keys=True))
             return 0
@@ -1556,6 +1675,7 @@ def main(argv: list[str] | None = None) -> int:
                     else (root / args.receipt_output_path).resolve()
                 ),
                 memory_limit=args.memory_limit,
+                selected_slice_refs=args.slice_ref,
             )
             print(json.dumps(result, indent=2, sort_keys=True))
             return 0

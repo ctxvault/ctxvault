@@ -11,6 +11,15 @@ import re
 import sqlite3
 from typing import Any, Iterable, Iterator
 
+from .context_slices import (
+    ContextSlice,
+    build_compiled_state_context_slices,
+    build_episode_context_slice,
+    build_markdown_context_slices,
+    build_turn_context_slice,
+    privacy_sort_key,
+    redacted_text_for_findings,
+)
 from .intelligence import (
     build_episode_synthesis_payload,
     build_session_aggregate_preview,
@@ -26,6 +35,7 @@ from .intelligence import (
 from .compiled_state import build_compiled_workstream_state
 from .layout import VaultLayout
 from .policy import CtxVaultPolicy
+from .privacy import scan_privacy_text
 
 
 CORE_MODEL_TO_KIND = {
@@ -184,6 +194,16 @@ def _unique(values: Iterable[str]) -> list[str]:
     return ordered
 
 
+def _first_reference(values: Any, prefix: str) -> str | None:
+    if not isinstance(values, list):
+        return None
+    for value in values:
+        text = str(value).strip()
+        if text.startswith(prefix):
+            return text
+    return None
+
+
 def _string_list(values: Iterable[Any] | None) -> list[str]:
     if values is None:
         return []
@@ -200,6 +220,18 @@ def _payload_sensitivity(payloads: Iterable[dict[str, Any]]) -> str:
             best = sensitivity
             best_rank = rank
     return best if best_rank >= 0 else "internal"
+
+
+def _max_sensitivity(values: Iterable[Any]) -> str:
+    best = "public"
+    best_rank = SENSITIVITY_ORDER[best]
+    for value in values:
+        sensitivity = str(value or "public")
+        rank = SENSITIVITY_ORDER.get(sensitivity, SENSITIVITY_ORDER["internal"])
+        if rank > best_rank:
+            best = sensitivity
+            best_rank = rank
+    return best
 
 
 def _payload_redaction_state(payloads: Iterable[dict[str, Any]]) -> str:
@@ -322,6 +354,433 @@ class CtxVault:
             "indexed_object_count": indexed_object_count,
             "object_kinds": object_kinds,
             "rebuilt_at": _utc_now(),
+        }
+
+    def rebuild_context_slices(self) -> dict[str, Any]:
+        self.initialize()
+        slices: list[ContextSlice] = []
+        source_counts: dict[str, int] = {}
+        privacy_counts: dict[str, int] = {}
+
+        with self._connection() as conn:
+            self._clear_context_slice_index(conn)
+
+            knowledge_rows = conn.execute(
+                """
+                SELECT object_id, semantic_ref, storage_path, scope_kind, scope_value, title, updated_at
+                FROM knowledge_artifacts
+                WHERE status = 'active'
+                ORDER BY updated_at ASC, object_id ASC
+                """
+            ).fetchall()
+            for row in knowledge_rows:
+                payload = self._load_payload(Path(str(row["storage_path"])))
+                body_text = _text_body(payload.get("body"))
+                if not body_text.strip():
+                    continue
+                workstream_ref = _first_reference(payload.get("workstream_refs"), "workstream://")
+                built = build_markdown_context_slices(
+                    source_kind="knowledge",
+                    source_id=str(row["object_id"]),
+                    source_ref=str(row["semantic_ref"]),
+                    source_object_kind="knowledge_artifact",
+                    title=str(row["title"]),
+                    body_text=body_text,
+                    scope_kind=row["scope_kind"],
+                    scope_value=row["scope_value"],
+                    workstream_ref=workstream_ref,
+                    updated_at=str(row["updated_at"]),
+                    sensitivity=str(payload.get("sensitivity") or "internal"),
+                )
+                self._insert_context_slices(conn, built)
+                slices.extend(built)
+                source_counts["knowledge_artifact"] = source_counts.get("knowledge_artifact", 0) + len(built)
+
+            turn_rows = conn.execute(
+                """
+                SELECT oi.storage_path
+                FROM object_index AS oi
+                WHERE oi.object_kind = 'turn'
+                ORDER BY oi.stored_at ASC, oi.object_id ASC
+                """
+            ).fetchall()
+            for row in turn_rows:
+                payload = self._load_payload(Path(str(row["storage_path"])))
+                built = [build_turn_context_slice(turn_payload=payload, updated_at=str(payload.get("created_at") or ""))]
+                self._insert_context_slices(conn, built)
+                slices.extend(built)
+                source_counts["turn"] = source_counts.get("turn", 0) + len(built)
+
+            episode_rows = conn.execute(
+                """
+                SELECT oi.storage_path
+                FROM object_index AS oi
+                WHERE oi.object_kind = 'episode'
+                ORDER BY oi.stored_at ASC, oi.object_id ASC
+                """
+            ).fetchall()
+            for row in episode_rows:
+                payload = self._load_payload(Path(str(row["storage_path"])))
+                built = [build_episode_context_slice(episode_payload=payload)]
+                self._insert_context_slices(conn, built)
+                slices.extend(built)
+                source_counts["episode"] = source_counts.get("episode", 0) + len(built)
+
+            conn.commit()
+            workstream_rows = conn.execute(
+                """
+                SELECT object_id, scope_kind, scope_value
+                FROM workstreams
+                WHERE status = 'active'
+                ORDER BY updated_at ASC, object_id ASC
+                """
+            ).fetchall()
+            for row in workstream_rows:
+                conn.commit()
+                state = self.compiled_workstream_state(str(row["object_id"]))
+                built = build_compiled_state_context_slices(
+                    state_payload=state,
+                    scope_kind=row["scope_kind"],
+                    scope_value=row["scope_value"],
+                )
+                self._insert_context_slices(conn, built)
+                slices.extend(built)
+                source_counts["compiled_workstream_state"] = source_counts.get("compiled_workstream_state", 0) + len(built)
+
+            conn.commit()
+
+        for item in slices:
+            privacy_counts[item.privacy_class] = privacy_counts.get(item.privacy_class, 0) + 1
+
+        return {
+            "schema_id": "ctxvault.context-slice-rebuild/v1",
+            "sqlite_path": str(self.layout.sqlite_path),
+            "slice_count": len(slices),
+            "source_counts": source_counts,
+            "privacy_counts": privacy_counts,
+            "rebuilt_at": _utc_now(),
+        }
+
+    def search_context_slices(
+        self,
+        query: str,
+        *,
+        scope: tuple[str, str] | None = None,
+        workstream_ref: str | None = None,
+        limit: int = 10,
+        include_blocked: bool = False,
+    ) -> list[SearchHit]:
+        self.initialize()
+        tokens = _query_tokens(query)
+        with self._connection() as conn:
+            if not self._has_table(conn, "context_slices"):
+                return []
+            if tokens and self._has_table(conn, "context_slice_fts"):
+                sql = [
+                    """
+                    SELECT
+                      cs.*,
+                      bm25(context_slice_fts) AS rank
+                    FROM context_slice_fts
+                    JOIN context_slices AS cs ON context_slice_fts.slice_id = cs.slice_id
+                    WHERE context_slice_fts MATCH ?
+                    """
+                ]
+                params: list[Any] = [" OR ".join(tokens)]
+            else:
+                sql = [
+                    """
+                    SELECT
+                      cs.*,
+                      0.0 AS rank
+                    FROM context_slices AS cs
+                    WHERE 1 = 1
+                    """
+                ]
+                params = []
+                for token in tokens:
+                    sql.append("AND (LOWER(cs.title) LIKE ? OR LOWER(cs.redacted_preview) LIKE ?)")
+                    params.extend([f"%{token}%", f"%{token}%"])
+            if not include_blocked:
+                sql.append("AND cs.privacy_class != 'withheld'")
+            if scope is not None:
+                sql.append("AND cs.scope_kind = ? AND cs.scope_value = ?")
+                params.extend(scope)
+            if workstream_ref is not None:
+                sql.append("AND cs.workstream_ref = ?")
+                params.append(workstream_ref)
+            sql.append(
+                """
+                ORDER BY
+                  (rank - cs.ranking_boost) ASC,
+                  CASE cs.privacy_class
+                    WHEN 'searchable_plain' THEN 0
+                    WHEN 'searchable_redacted' THEN 1
+                    WHEN 'metadata_only' THEN 2
+                    WHEN 'withheld' THEN 3
+                    ELSE 4
+                  END ASC,
+                  cs.updated_at DESC,
+                  cs.slice_ref ASC
+                LIMIT ?
+                """
+            )
+            params.append(limit)
+            return [
+                self._context_slice_hit_from_row(dict(row))
+                for row in conn.execute("\n".join(sql), params).fetchall()
+            ]
+
+    def preflight_context_selection(
+        self,
+        slice_refs: list[str],
+        *,
+        target_kind: str,
+        query: str | None = None,
+        workstream_ref: str | None = None,
+        write_receipt: bool = False,
+    ) -> dict[str, Any]:
+        self.initialize()
+        refs = _unique(slice_refs)
+        if not refs:
+            raise ValueError("at least one slice ref is required")
+
+        with self._connection() as conn:
+            rows_by_ref = self._context_slice_rows_by_ref(conn, refs)
+        missing = [ref for ref in refs if ref not in rows_by_ref]
+        if missing:
+            raise KeyError(f"unknown context slice refs: {missing}")
+
+        rows = [rows_by_ref[ref] for ref in refs]
+        selected_summaries = [
+            {
+                "slice_ref": row["slice_ref"],
+                "source_ref": row["source_ref"],
+                "source_object_kind": row["source_object_kind"],
+                "slice_kind": row["slice_kind"],
+                "title": row["title"],
+                "privacy_class": row["privacy_class"],
+                "sensitivity": row["sensitivity"],
+                "redaction_state": row["redaction_state"],
+                "token_estimate": row["token_estimate"],
+                "redacted_preview": row["redacted_preview"],
+            }
+            for row in rows
+        ]
+        selected_privacy = [str(row["privacy_class"]) for row in rows]
+        selected_source_refs = _unique([str(row["source_ref"]) for row in rows])
+        privacy_counts: dict[str, int] = {}
+        for privacy_class in selected_privacy:
+            privacy_counts[privacy_class] = privacy_counts.get(privacy_class, 0) + 1
+        candidate_parts = [self._context_slice_candidate_text(row) for row in rows if str(row["privacy_class"]) != "withheld"]
+        candidate_text = "\n\n".join(part for part in candidate_parts if part.strip())
+        scan = scan_privacy_text(candidate_text, source=f"context-selection:{target_kind}", max_findings=100)
+        redacted_candidate = redacted_text_for_findings(candidate_text, scan.findings)
+
+        decision = scan.decision
+        reasons = list(scan.reasons)
+        if any(item == "withheld" for item in selected_privacy):
+            decision = "block"
+            reasons.append("selection includes withheld slices")
+        elif any(item == "metadata_only" for item in selected_privacy) and decision in {"allow", "redact"}:
+            decision = "review"
+            reasons.append("selection includes metadata-only slices")
+
+        created_at = _utc_now()
+        selection_hash = hashlib.sha256("|".join(refs).encode("utf-8")).hexdigest()[:16]
+        allowed_to_write = decision != "block"
+        receipt = {
+            "schema_id": "ctxvault.privacy-preflight-receipt/v1",
+            "contract_state": "experimental",
+            "receipt_id": f"privacy_preflight_{_utc_compact_timestamp().lower()}_{hashlib.sha256('|'.join(refs).encode('utf-8')).hexdigest()[:8]}",
+            "selection_ref": f"context-selection://{selection_hash}",
+            "selection_mode": "explicit_slice_refs",
+            "target_kind": target_kind,
+            "query": query,
+            "workstream_ref": workstream_ref,
+            "selected_slice_refs": refs,
+            "selected_slice_count": len(refs),
+            "source_refs": selected_source_refs,
+            "decision": decision,
+            "highest_severity": scan.highest_severity,
+            "highest_sensitivity": _max_sensitivity(str(row["sensitivity"]) for row in rows),
+            "privacy_classes": privacy_counts,
+            "reasons": reasons,
+            "candidate_content_sha256": hashlib.sha256(candidate_text.encode("utf-8")).hexdigest(),
+            "redacted_content_sha256": hashlib.sha256(redacted_candidate.encode("utf-8")).hexdigest(),
+            "token_estimate": _estimate_tokens([candidate_text]),
+            "projection_gate": {
+                "required_for_selected_slice_projection": True,
+                "allowed_to_write": allowed_to_write,
+                "blocking_decisions": ["block"],
+            },
+            "privacy_scan": scan.to_dict(),
+            "selected_slices": selected_summaries,
+            "created_at": created_at,
+        }
+        result = {"receipt": receipt, "receipt_path": None}
+        if write_receipt:
+            receipt_dir = self.layout.exports_dir / "receipts"
+            receipt_dir.mkdir(parents=True, exist_ok=True)
+            receipt_path = receipt_dir / f"{receipt['receipt_id']}.json"
+            receipt_path.write_text(json.dumps(receipt, ensure_ascii=True, indent=2, sort_keys=True) + "\n")
+            result["receipt_path"] = str(receipt_path)
+        return result
+
+    def plan_logical_purge(
+        self,
+        *,
+        source_refs: list[str] | None = None,
+        slice_refs: list[str] | None = None,
+        include_projections: bool = False,
+    ) -> dict[str, Any]:
+        self.initialize()
+        requested_source_refs = _unique(source_refs or [])
+        requested_slice_refs = _unique(slice_refs or [])
+        if not requested_source_refs and not requested_slice_refs:
+            raise ValueError("at least one source ref or slice ref is required")
+
+        with self._connection() as conn:
+            slice_rows = self._context_slice_rows_for_purge(
+                conn,
+                source_refs=requested_source_refs,
+                slice_refs=requested_slice_refs,
+            )
+            selected_slice_ids = [str(row["slice_id"]) for row in slice_rows]
+            selected_slice_refs = [str(row["slice_ref"]) for row in slice_rows]
+            selected_source_refs = _unique([*requested_source_refs, *[str(row["source_ref"]) for row in slice_rows]])
+            fts_rows = self._context_slice_fts_count(conn, selected_slice_ids)
+            link_rows = self._context_slice_link_count(conn, selected_slice_refs)
+            embedding_rows = self._context_slice_embedding_counts(conn, selected_slice_ids, selected_slice_refs)
+
+        referencing_projection_receipts = self._projection_receipts_referencing_refs(
+            source_refs=selected_source_refs,
+            slice_refs=selected_slice_refs,
+        )
+        projection_candidates = (
+            self._projection_purge_candidates(referencing_projection_receipts)
+            if include_projections
+            else []
+        )
+        sensitivity = _max_sensitivity(row["sensitivity"] for row in slice_rows)
+        return {
+            "schema_id": "ctxvault.logical-purge-plan/v1",
+            "operation": "logical_purge_derived",
+            "mode": "plan",
+            "source_refs": selected_source_refs,
+            "slice_refs": selected_slice_refs,
+            "highest_sensitivity": sensitivity,
+            "include_projections": include_projections,
+            "would_delete": {
+                "context_slice_rows": len(slice_rows),
+                "context_slice_fts_rows": fts_rows,
+                "context_slice_link_rows": link_rows,
+                "context_slice_embedding_rows": embedding_rows,
+                "projection_files": [candidate["target_path"] for candidate in projection_candidates],
+            },
+            "would_tombstone_receipts": [receipt["receipt_path"] for receipt in referencing_projection_receipts],
+            "retained": {
+                "governed_source_objects": True,
+                "review_receipts": True,
+                "snapshots": True,
+            },
+            "warnings": [
+                "logical purge removes derived indexes, previews, optional embeddings, and selected projections only",
+                "governed source objects are not deleted or rewritten",
+                "CtxVault does not claim SSD, APFS snapshot, backup, or physical secure deletion",
+            ],
+            "created_at": _utc_now(),
+        }
+
+    def apply_logical_purge(
+        self,
+        *,
+        source_refs: list[str] | None = None,
+        slice_refs: list[str] | None = None,
+        include_projections: bool = False,
+        reviewer: str,
+        notes: str | None = None,
+        policy_payload: dict[str, Any] | None = None,
+        backup_receipt: dict[str, Any] | None = None,
+        confirm: bool = False,
+    ) -> dict[str, Any]:
+        self.initialize()
+        if not confirm:
+            raise ValueError("logical purge apply requires explicit confirm=True")
+        if not reviewer.strip():
+            raise ValueError("reviewer must be a non-empty string")
+
+        plan = self.plan_logical_purge(
+            source_refs=source_refs,
+            slice_refs=slice_refs,
+            include_projections=include_projections,
+        )
+        if policy_payload is None:
+            raise ValueError("policy payload is required for logical purge apply")
+        policy_decision = CtxVaultPolicy(policy_payload).evaluate_operation(
+            operation="logical_purge_derived",
+            sensitivity=str(plan["highest_sensitivity"]),
+            backup_receipt=backup_receipt,
+        )
+        if policy_decision.decision not in {"allow", "review_required"}:
+            reasons = "; ".join(policy_decision.reasons)
+            raise ValueError(f"logical purge blocked: {policy_decision.decision} ({reasons})")
+
+        deleted_projection_files: list[str] = []
+        tombstoned_receipts = list(plan.get("would_tombstone_receipts") or [])
+        selected_slice_refs = list(plan["slice_refs"])
+        selected_slice_ids: list[str] = []
+        with self._connection() as conn:
+            rows = self._context_slice_rows_for_purge(
+                conn,
+                source_refs=list(plan["source_refs"]),
+                slice_refs=selected_slice_refs,
+            )
+            selected_slice_ids = [str(row["slice_id"]) for row in rows]
+            self._delete_context_slice_embeddings(conn, selected_slice_ids, selected_slice_refs)
+            self._delete_context_slice_links(conn, selected_slice_refs)
+            self._delete_context_slice_fts(conn, selected_slice_ids)
+            self._delete_context_slices(conn, selected_slice_ids)
+            conn.commit()
+
+        if include_projections:
+            for target_path in plan["would_delete"]["projection_files"]:
+                if self._unlink_projection_candidate(str(target_path)):
+                    deleted_projection_files.append(str(target_path))
+
+        receipt_id = f"logical_purge_{_utc_compact_timestamp().lower()}_{hashlib.sha256('|'.join(selected_slice_refs).encode('utf-8')).hexdigest()[:8]}"
+        receipt = {
+            "schema_id": "ctxvault.logical-purge-receipt/v1",
+            "receipt_id": receipt_id,
+            "operation": "logical_purge_derived",
+            "decision": "applied",
+            "reviewed_by": reviewer,
+            "reviewed_at": _utc_now(),
+            "notes": notes,
+            "plan": plan,
+            "deleted": {
+                "context_slice_rows": len(selected_slice_ids),
+                "projection_files": deleted_projection_files,
+            },
+            "tombstoned_receipts": tombstoned_receipts,
+            "tombstone_paths": [],
+            "policy_decision": policy_decision.to_dict(),
+            "secure_deletion_claim": "none",
+            "repair_hint": "run context-slice-rebuild to rebuild derived slices, or logical-purge-plan --include-projections before clearing projection outputs",
+        }
+        receipt_dir = self.layout.reviews_dir / "logical_purge"
+        receipt_dir.mkdir(parents=True, exist_ok=True)
+        receipt["tombstone_paths"] = self._write_logical_purge_tombstones(
+            receipt_dir=receipt_dir,
+            purge_receipt_id=receipt_id,
+            purged_slice_refs=selected_slice_refs,
+            receipt_paths=tombstoned_receipts,
+        )
+        receipt_path = receipt_dir / f"{receipt['receipt_id']}.json"
+        receipt_path.write_text(json.dumps(receipt, ensure_ascii=True, indent=2, sort_keys=True) + "\n")
+        return {
+            "receipt": receipt,
+            "receipt_path": str(receipt_path),
         }
 
     def store_core_object(self, model_name: str, payload: dict[str, Any]) -> StoredObjectEnvelope:
@@ -2047,6 +2506,42 @@ class CtxVault:
               created_at TEXT NOT NULL
             );
 
+            CREATE TABLE IF NOT EXISTS context_slices (
+              slice_id TEXT PRIMARY KEY,
+              slice_ref TEXT NOT NULL UNIQUE,
+              source_ref TEXT NOT NULL,
+              source_object_kind TEXT NOT NULL,
+              scope_kind TEXT,
+              scope_value TEXT,
+              workstream_ref TEXT,
+              slice_kind TEXT NOT NULL,
+              title TEXT NOT NULL,
+              heading_path TEXT,
+              line_start INTEGER,
+              line_end INTEGER,
+              byte_start INTEGER,
+              byte_end INTEGER,
+              content_sha256 TEXT NOT NULL,
+              redacted_sha256 TEXT,
+              privacy_class TEXT NOT NULL,
+              sensitivity TEXT NOT NULL,
+              redaction_state TEXT NOT NULL,
+              token_estimate INTEGER NOT NULL,
+              updated_at TEXT NOT NULL,
+              redacted_preview TEXT NOT NULL,
+              source_content_sha256 TEXT NOT NULL,
+              ranking_boost REAL NOT NULL DEFAULT 0.0
+            );
+
+            CREATE TABLE IF NOT EXISTS context_slice_links (
+              from_slice_ref TEXT NOT NULL,
+              to_ref TEXT NOT NULL,
+              relation TEXT NOT NULL,
+              confidence REAL NOT NULL,
+              source TEXT NOT NULL,
+              PRIMARY KEY(from_slice_ref, to_ref, relation)
+            );
+
             CREATE TABLE IF NOT EXISTS claims (
               object_id TEXT PRIMARY KEY,
               semantic_ref TEXT NOT NULL,
@@ -2105,6 +2600,9 @@ class CtxVault:
         try:
             conn.execute("CREATE VIRTUAL TABLE IF NOT EXISTS memory_fts USING fts5(object_id UNINDEXED, statement)")
             conn.execute("CREATE VIRTUAL TABLE IF NOT EXISTS knowledge_fts USING fts5(object_id UNINDEXED, title, body_text)")
+            conn.execute(
+                "CREATE VIRTUAL TABLE IF NOT EXISTS context_slice_fts USING fts5(slice_id UNINDEXED, title, body_redacted, tokenize = 'unicode61')"
+            )
         except sqlite3.OperationalError:
             pass
         self._ensure_session_projection_schema(conn)
@@ -2842,6 +3340,374 @@ class CtxVault:
             ),
         )
 
+    def _clear_context_slice_index(self, conn: sqlite3.Connection) -> None:
+        if self._has_table(conn, "context_slice_fts"):
+            conn.execute("DELETE FROM context_slice_fts")
+        if self._has_table(conn, "context_slice_links"):
+            conn.execute("DELETE FROM context_slice_links")
+        if self._has_table(conn, "context_slices"):
+            conn.execute("DELETE FROM context_slices")
+
+    def _insert_context_slices(self, conn: sqlite3.Connection, slices: list[ContextSlice]) -> None:
+        for item in slices:
+            conn.execute(
+                """
+                INSERT INTO context_slices (
+                  slice_id, slice_ref, source_ref, source_object_kind, scope_kind, scope_value,
+                  workstream_ref, slice_kind, title, heading_path, line_start, line_end,
+                  byte_start, byte_end, content_sha256, redacted_sha256, privacy_class,
+                  sensitivity, redaction_state, token_estimate, updated_at, redacted_preview,
+                  source_content_sha256, ranking_boost
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(slice_id) DO UPDATE SET
+                  slice_ref = excluded.slice_ref,
+                  source_ref = excluded.source_ref,
+                  source_object_kind = excluded.source_object_kind,
+                  scope_kind = excluded.scope_kind,
+                  scope_value = excluded.scope_value,
+                  workstream_ref = excluded.workstream_ref,
+                  slice_kind = excluded.slice_kind,
+                  title = excluded.title,
+                  heading_path = excluded.heading_path,
+                  line_start = excluded.line_start,
+                  line_end = excluded.line_end,
+                  byte_start = excluded.byte_start,
+                  byte_end = excluded.byte_end,
+                  content_sha256 = excluded.content_sha256,
+                  redacted_sha256 = excluded.redacted_sha256,
+                  privacy_class = excluded.privacy_class,
+                  sensitivity = excluded.sensitivity,
+                  redaction_state = excluded.redaction_state,
+                  token_estimate = excluded.token_estimate,
+                  updated_at = excluded.updated_at,
+                  redacted_preview = excluded.redacted_preview,
+                  source_content_sha256 = excluded.source_content_sha256,
+                  ranking_boost = excluded.ranking_boost
+                """,
+                (
+                    item.slice_id,
+                    item.slice_ref,
+                    item.source_ref,
+                    item.source_object_kind,
+                    item.scope_kind,
+                    item.scope_value,
+                    item.workstream_ref,
+                    item.slice_kind,
+                    item.title,
+                    item.heading_path,
+                    item.line_start,
+                    item.line_end,
+                    item.byte_start,
+                    item.byte_end,
+                    item.content_sha256,
+                    item.redacted_sha256,
+                    item.privacy_class,
+                    item.sensitivity,
+                    item.redaction_state,
+                    item.token_estimate,
+                    item.updated_at,
+                    item.redacted_preview,
+                    item.source_content_sha256,
+                    item.ranking_boost,
+                ),
+            )
+            if self._has_table(conn, "context_slice_fts") and item.privacy_class != "withheld":
+                conn.execute("DELETE FROM context_slice_fts WHERE slice_id = ?", (item.slice_id,))
+                conn.execute(
+                    "INSERT INTO context_slice_fts (slice_id, title, body_redacted) VALUES (?, ?, ?)",
+                    (item.slice_id, item.index_title, item.index_body_redacted),
+                )
+
+    def _context_slice_rows_by_ref(self, conn: sqlite3.Connection, slice_refs: list[str]) -> dict[str, dict[str, Any]]:
+        placeholders = ",".join("?" for _ in slice_refs)
+        rows = conn.execute(
+            f"""
+            SELECT *
+            FROM context_slices
+            WHERE slice_ref IN ({placeholders})
+            """,
+            slice_refs,
+        ).fetchall()
+        return {str(row["slice_ref"]): dict(row) for row in rows}
+
+    def _context_slice_candidate_text(self, row: dict[str, Any]) -> str:
+        source_kind = str(row["source_object_kind"])
+        source_ref = str(row["source_ref"])
+        if source_kind == "knowledge_artifact" and source_ref.startswith("knowledge://"):
+            payload = self._optional_object_payload("knowledge_artifact", source_ref.replace("knowledge://", "", 1))
+            if payload is not None:
+                body = _text_body(payload.get("body"))
+                line_start = row.get("line_start")
+                line_end = row.get("line_end")
+                if line_start is not None and line_end is not None:
+                    lines = body.splitlines()
+                    start = max(0, int(line_start) - 1)
+                    end = min(len(lines), int(line_end))
+                    return "\n".join(lines[start:end]).strip()
+                return body.strip()
+        if source_kind == "turn" and source_ref.startswith("turn://"):
+            payload = self._optional_object_payload("turn", source_ref.replace("turn://", "", 1))
+            if payload is not None:
+                role = str(payload.get("role") or "unknown")
+                content = str(payload.get("content") or "")
+                return f"{role}: {content}".strip()
+        if source_kind == "episode" and source_ref.startswith("episode://"):
+            payload = self._optional_object_payload("episode", source_ref.replace("episode://", "", 1))
+            if payload is not None:
+                return "\n".join(
+                    part
+                    for part in [
+                        str(payload.get("title") or "").strip(),
+                        str(payload.get("summary") or "").strip(),
+                        str(payload.get("outcome") or "").strip(),
+                    ]
+                    if part
+                )
+        return str(row.get("redacted_preview") or row.get("title") or "").strip()
+
+    def _context_slice_rows_for_purge(
+        self,
+        conn: sqlite3.Connection,
+        *,
+        source_refs: list[str],
+        slice_refs: list[str],
+    ) -> list[dict[str, Any]]:
+        if not self._has_table(conn, "context_slices"):
+            return []
+        conditions: list[str] = []
+        params: list[Any] = []
+        if source_refs:
+            conditions.append(f"source_ref IN ({','.join('?' for _ in source_refs)})")
+            params.extend(source_refs)
+        if slice_refs:
+            conditions.append(f"slice_ref IN ({','.join('?' for _ in slice_refs)})")
+            params.extend(slice_refs)
+        if not conditions:
+            return []
+        rows = conn.execute(
+            f"""
+            SELECT *
+            FROM context_slices
+            WHERE {' OR '.join(conditions)}
+            ORDER BY source_ref ASC, slice_ref ASC
+            """,
+            params,
+        ).fetchall()
+        return [dict(row) for row in rows]
+
+    def _context_slice_fts_count(self, conn: sqlite3.Connection, slice_ids: list[str]) -> int:
+        if not slice_ids or not self._has_table(conn, "context_slice_fts"):
+            return 0
+        placeholders = ",".join("?" for _ in slice_ids)
+        row = conn.execute(
+            f"SELECT COUNT(*) FROM context_slice_fts WHERE slice_id IN ({placeholders})",
+            slice_ids,
+        ).fetchone()
+        return int(row[0]) if row is not None else 0
+
+    def _context_slice_link_count(self, conn: sqlite3.Connection, slice_refs: list[str]) -> int:
+        if not slice_refs or not self._has_table(conn, "context_slice_links"):
+            return 0
+        placeholders = ",".join("?" for _ in slice_refs)
+        row = conn.execute(
+            f"""
+            SELECT COUNT(*)
+            FROM context_slice_links
+            WHERE from_slice_ref IN ({placeholders}) OR to_ref IN ({placeholders})
+            """,
+            [*slice_refs, *slice_refs],
+        ).fetchone()
+        return int(row[0]) if row is not None else 0
+
+    def _context_slice_embedding_counts(
+        self,
+        conn: sqlite3.Connection,
+        slice_ids: list[str],
+        slice_refs: list[str],
+    ) -> dict[str, int]:
+        counts: dict[str, int] = {}
+        for table in ("context_slice_embeddings", "context_embeddings"):
+            if not self._has_table(conn, table):
+                continue
+            columns = self._table_columns(conn, table)
+            if "slice_id" in columns and slice_ids:
+                placeholders = ",".join("?" for _ in slice_ids)
+                row = conn.execute(
+                    f'SELECT COUNT(*) FROM "{table}" WHERE slice_id IN ({placeholders})',
+                    slice_ids,
+                ).fetchone()
+                counts[table] = int(row[0]) if row is not None else 0
+            elif "slice_ref" in columns and slice_refs:
+                placeholders = ",".join("?" for _ in slice_refs)
+                row = conn.execute(
+                    f'SELECT COUNT(*) FROM "{table}" WHERE slice_ref IN ({placeholders})',
+                    slice_refs,
+                ).fetchone()
+                counts[table] = int(row[0]) if row is not None else 0
+        return counts
+
+    def _delete_context_slice_embeddings(
+        self,
+        conn: sqlite3.Connection,
+        slice_ids: list[str],
+        slice_refs: list[str],
+    ) -> None:
+        for table in ("context_slice_embeddings", "context_embeddings"):
+            if not self._has_table(conn, table):
+                continue
+            columns = self._table_columns(conn, table)
+            if "slice_id" in columns and slice_ids:
+                placeholders = ",".join("?" for _ in slice_ids)
+                conn.execute(f'DELETE FROM "{table}" WHERE slice_id IN ({placeholders})', slice_ids)
+            elif "slice_ref" in columns and slice_refs:
+                placeholders = ",".join("?" for _ in slice_refs)
+                conn.execute(f'DELETE FROM "{table}" WHERE slice_ref IN ({placeholders})', slice_refs)
+
+    def _delete_context_slice_links(self, conn: sqlite3.Connection, slice_refs: list[str]) -> None:
+        if not slice_refs or not self._has_table(conn, "context_slice_links"):
+            return
+        placeholders = ",".join("?" for _ in slice_refs)
+        conn.execute(
+            f"""
+            DELETE FROM context_slice_links
+            WHERE from_slice_ref IN ({placeholders}) OR to_ref IN ({placeholders})
+            """,
+            [*slice_refs, *slice_refs],
+        )
+
+    def _delete_context_slice_fts(self, conn: sqlite3.Connection, slice_ids: list[str]) -> None:
+        if not slice_ids or not self._has_table(conn, "context_slice_fts"):
+            return
+        placeholders = ",".join("?" for _ in slice_ids)
+        conn.execute(f"DELETE FROM context_slice_fts WHERE slice_id IN ({placeholders})", slice_ids)
+
+    def _delete_context_slices(self, conn: sqlite3.Connection, slice_ids: list[str]) -> None:
+        if not slice_ids or not self._has_table(conn, "context_slices"):
+            return
+        placeholders = ",".join("?" for _ in slice_ids)
+        conn.execute(f"DELETE FROM context_slices WHERE slice_id IN ({placeholders})", slice_ids)
+
+    def _projection_receipts_referencing_refs(self, *, source_refs: list[str], slice_refs: list[str]) -> list[dict[str, Any]]:
+        receipts: list[dict[str, Any]] = []
+        roots = [
+            self.layout.repo_root / "exports",
+            self.layout.repo_root / "artifacts",
+            self.layout.repo_root / "receipts",
+            self.layout.vault_root,
+        ]
+        for root in roots:
+            if not root.exists():
+                continue
+            for path in sorted(root.rglob("*.json")):
+                payload = self._maybe_load_json(path)
+                if payload is None:
+                    continue
+                if payload.get("schema_version") != "ctxvault.projection-receipt/v1":
+                    continue
+                target_path = str(payload.get("target_path") or "").strip()
+                payload_source_refs = _string_list(payload.get("source_refs"))
+                payload_slice_refs = _string_list(payload.get("selected_slice_refs"))
+                privacy_preflight = payload.get("privacy_preflight") if isinstance(payload.get("privacy_preflight"), dict) else {}
+                payload_slice_refs.extend(_string_list(privacy_preflight.get("selected_slice_refs")))
+                if not (set(source_refs) & set(payload_source_refs) or set(slice_refs) & set(payload_slice_refs)):
+                    continue
+                receipts.append(
+                    {
+                        "receipt_path": str(path.resolve()),
+                        "target_path": target_path,
+                        "source_refs": _unique(payload_source_refs),
+                        "selected_slice_refs": _unique(payload_slice_refs),
+                    }
+                )
+        unique: dict[str, dict[str, Any]] = {}
+        for receipt in receipts:
+            unique[receipt["receipt_path"]] = receipt
+        return [unique[key] for key in sorted(unique)]
+
+    def _projection_purge_candidates(self, receipt_refs: list[dict[str, Any]]) -> list[dict[str, str]]:
+        candidates: list[dict[str, str]] = []
+        for receipt_ref in receipt_refs:
+            target_path = str(receipt_ref.get("target_path") or "").strip()
+            if not target_path:
+                continue
+            resolved_target = Path(target_path).expanduser()
+            if not resolved_target.is_absolute():
+                resolved_target = self.layout.repo_root / resolved_target
+            if not self._is_safe_projection_delete_target(resolved_target):
+                continue
+            candidates.append(
+                {
+                    "receipt_path": str(receipt_ref["receipt_path"]),
+                    "target_path": str(resolved_target.resolve()),
+                }
+            )
+        unique: dict[tuple[str, str], dict[str, str]] = {}
+        for candidate in candidates:
+            unique[(candidate["receipt_path"], candidate["target_path"])] = candidate
+        return [unique[key] for key in sorted(unique)]
+
+    def _write_logical_purge_tombstones(
+        self,
+        *,
+        receipt_dir: Path,
+        purge_receipt_id: str,
+        purged_slice_refs: list[str],
+        receipt_paths: list[str],
+    ) -> list[str]:
+        tombstone_paths: list[str] = []
+        for receipt_path in receipt_paths:
+            path_hash = hashlib.sha256(receipt_path.encode("utf-8")).hexdigest()[:16]
+            tombstone = {
+                "schema_id": "ctxvault.projection-receipt-tombstone/v1",
+                "tombstone_id": f"projection_receipt_tombstone_{path_hash}",
+                "purge_receipt_id": purge_receipt_id,
+                "receipt_path": receipt_path,
+                "purged_slice_refs": purged_slice_refs,
+                "reason": "projection receipt references context slices removed by logical purge",
+                "created_at": _utc_now(),
+            }
+            tombstone_path = receipt_dir / f"{tombstone['tombstone_id']}.json"
+            tombstone_path.write_text(json.dumps(tombstone, ensure_ascii=True, indent=2, sort_keys=True) + "\n")
+            tombstone_paths.append(str(tombstone_path))
+        return tombstone_paths
+
+    def _maybe_load_json(self, path: Path) -> dict[str, Any] | None:
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+            return None
+        return payload if isinstance(payload, dict) else None
+
+    def _unlink_projection_candidate(self, target_path: str) -> bool:
+        path = Path(target_path)
+        if not self._is_safe_projection_delete_target(path) or not path.exists() or not path.is_file():
+            return False
+        path.unlink()
+        return True
+
+    def _is_safe_projection_delete_target(self, path: Path) -> bool:
+        try:
+            resolved = path.resolve()
+        except OSError:
+            return False
+        allowed_roots = [
+            self.layout.repo_root.resolve(),
+            self.layout.exports_dir.resolve(),
+        ]
+        if not any(_path_is_relative_to(resolved, root) for root in allowed_roots):
+            return False
+        if _path_is_relative_to(resolved, self.layout.objects_dir.resolve()):
+            return False
+        if resolved.suffix.lower() not in {".md", ".markdown", ".txt", ".json"}:
+            return False
+        if not resolved.exists():
+            return True
+        try:
+            preview = resolved.read_text(encoding="utf-8")[:4096]
+        except (OSError, UnicodeDecodeError):
+            return False
+        return "Generated by CtxVault" in preview or "ctxvault-projection" in preview
+
     def _load_payload(self, storage_path: Path) -> dict[str, Any]:
         return json.loads(storage_path.read_text())["payload"]
 
@@ -3431,6 +4297,52 @@ class CtxVault:
             payload=payload,
         )
 
+    def _context_slice_hit_from_row(self, row: dict[str, Any]) -> SearchHit:
+        rank = float(row.get("rank") or 0.0)
+        ranking_boost = float(row.get("ranking_boost") or 0.0)
+        privacy_class = str(row["privacy_class"])
+        scope = None
+        if row.get("scope_kind") and row.get("scope_value"):
+            scope = {"kind": row.get("scope_kind"), "value": row.get("scope_value")}
+        payload = {
+            "schema_id": "ctxvault.context-slice/v1",
+            "slice_id": str(row["slice_id"]),
+            "slice_ref": str(row["slice_ref"]),
+            "source_ref": str(row["source_ref"]),
+            "source_object_kind": str(row["source_object_kind"]),
+            "scope": scope,
+            "workstream_ref": row.get("workstream_ref"),
+            "slice_kind": str(row["slice_kind"]),
+            "title": str(row["title"]),
+            "heading_path": row.get("heading_path"),
+            "line_start": row.get("line_start"),
+            "line_end": row.get("line_end"),
+            "byte_start": row.get("byte_start"),
+            "byte_end": row.get("byte_end"),
+            "content_sha256": str(row["content_sha256"]),
+            "redacted_sha256": row.get("redacted_sha256"),
+            "privacy_class": privacy_class,
+            "sensitivity": str(row["sensitivity"]),
+            "redaction_state": str(row["redaction_state"]),
+            "token_estimate": int(row["token_estimate"]),
+            "updated_at": str(row["updated_at"]),
+            "redacted_preview": str(row.get("redacted_preview") or ""),
+            "source_content_sha256": str(row["source_content_sha256"]),
+            "ranking_reasons": {
+                "policy": "deterministic_bm25_v1",
+                "bm25_rank": rank,
+                "ranking_boost": ranking_boost,
+                "privacy_penalty_order": privacy_sort_key(privacy_class),
+            },
+        }
+        return SearchHit(
+            object_id=str(row["slice_id"]),
+            semantic_ref=str(row["slice_ref"]),
+            storage_ref=str(row["source_ref"]),
+            score=rank - ranking_boost + float(privacy_sort_key(privacy_class)),
+            payload=payload,
+        )
+
     def _episode_hit_from_row(self, row: dict[str, Any]) -> SearchHit:
         payload = self._load_payload(Path(row["storage_path"]))
         return SearchHit(
@@ -3467,3 +4379,11 @@ class CtxVault:
             score=1.0,
             payload=payload,
         )
+
+
+def _path_is_relative_to(path: Path, root: Path) -> bool:
+    try:
+        path.relative_to(root)
+        return True
+    except ValueError:
+        return False

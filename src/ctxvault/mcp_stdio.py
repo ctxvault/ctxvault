@@ -397,6 +397,75 @@ class CtxVaultMcpServer:
                     handler=self._privacy_scan,
                 ),
                 ToolSpec(
+                    name="context.search",
+                    description="Search deterministic local context slices over the redacted slice index.",
+                    input_schema={
+                        "type": "object",
+                        "properties": {
+                            "query": {"type": "string"},
+                            "scope_kind": {"type": "string"},
+                            "scope_value": {"type": "string"},
+                            "workstream_ref": {"type": "string"},
+                            "limit": {"type": "integer", "minimum": 1},
+                            "include_blocked": {"type": "boolean"},
+                        },
+                        "required": ["query"],
+                        "additionalProperties": False,
+                    },
+                    handler=self._context_search,
+                ),
+                ToolSpec(
+                    name="context.selection-preflight",
+                    description="Run deterministic privacy preflight over selected context slice refs.",
+                    input_schema={
+                        "type": "object",
+                        "properties": {
+                            "slice_refs": {"type": "array", "items": {"type": "string"}},
+                            "target_kind": {"type": "string"},
+                            "query": {"type": "string"},
+                            "workstream_ref": {"type": "string"},
+                            "write_receipt": {"type": "boolean"},
+                        },
+                        "required": ["slice_refs", "target_kind"],
+                        "additionalProperties": False,
+                    },
+                    handler=self._context_selection_preflight,
+                ),
+                ToolSpec(
+                    name="logical-purge.plan",
+                    description="Plan a logical purge of derived context indexes, previews, optional embeddings, and selected projections.",
+                    input_schema={
+                        "type": "object",
+                        "properties": {
+                            "source_refs": {"type": "array", "items": {"type": "string"}},
+                            "slice_refs": {"type": "array", "items": {"type": "string"}},
+                            "include_projections": {"type": "boolean"},
+                        },
+                        "additionalProperties": False,
+                    },
+                    handler=self._logical_purge_plan,
+                ),
+                ToolSpec(
+                    name="logical-purge.apply",
+                    description="Apply a reviewed logical purge of derived context data without deleting governed source objects.",
+                    input_schema={
+                        "type": "object",
+                        "properties": {
+                            "source_refs": {"type": "array", "items": {"type": "string"}},
+                            "slice_refs": {"type": "array", "items": {"type": "string"}},
+                            "include_projections": {"type": "boolean"},
+                            "reviewer": {"type": "string"},
+                            "notes": {"type": "string"},
+                            "policy_payload": {"type": "object"},
+                            "backup_receipt": {"type": "object"},
+                            "confirm": {"type": "boolean"},
+                        },
+                        "required": ["reviewer", "confirm"],
+                        "additionalProperties": False,
+                    },
+                    handler=self._logical_purge_apply,
+                ),
+                ToolSpec(
                     name="context.receipt",
                     description="Write a stable context bundle receipt that can be attached to plan-ledger artifacts or dossiers.",
                     input_schema={
@@ -667,6 +736,7 @@ class CtxVaultMcpServer:
                             "output_path": {"type": "string"},
                             "receipt_output_path": {"type": "string"},
                             "memory_limit": {"type": "integer", "minimum": 1},
+                            "selected_slice_refs": {"type": "array", "items": {"type": "string"}},
                         },
                         "required": ["workstream_id", "output_path", "receipt_output_path"],
                         "additionalProperties": False,
@@ -1233,6 +1303,61 @@ class CtxVaultMcpServer:
             max_findings=int(arguments.get("max_findings", 25)),
         )
 
+    def _context_search(self, arguments: JSONDict) -> list[JSONDict]:
+        return self.surface.context_search(
+            self._string(arguments.get("query"), field="query"),
+            scope_kind=self._optional_string(arguments.get("scope_kind")),
+            scope_value=self._optional_string(arguments.get("scope_value")),
+            workstream_ref=self._optional_string(arguments.get("workstream_ref")),
+            limit=int(arguments.get("limit", 10)),
+            include_blocked=bool(arguments.get("include_blocked", False)),
+        )
+
+    def _context_selection_preflight(self, arguments: JSONDict) -> JSONDict:
+        slice_refs = arguments.get("slice_refs")
+        if not isinstance(slice_refs, list):
+            raise ValueError("slice_refs must be an array")
+        return self.surface.context_selection_preflight(
+            [str(ref) for ref in slice_refs],
+            target_kind=self._string(arguments.get("target_kind"), field="target_kind"),
+            query=self._optional_string(arguments.get("query")),
+            workstream_ref=self._optional_string(arguments.get("workstream_ref")),
+            write_receipt=bool(arguments.get("write_receipt", False)),
+        )
+
+    def _logical_purge_plan(self, arguments: JSONDict) -> JSONDict:
+        source_refs = arguments.get("source_refs")
+        slice_refs = arguments.get("slice_refs")
+        return self.surface.logical_purge_plan(
+            source_refs=[str(ref) for ref in source_refs] if isinstance(source_refs, list) else None,
+            slice_refs=[str(ref) for ref in slice_refs] if isinstance(slice_refs, list) else None,
+            include_projections=bool(arguments.get("include_projections", False)),
+        )
+
+    def _logical_purge_apply(self, arguments: JSONDict) -> JSONDict:
+        source_refs = arguments.get("source_refs")
+        slice_refs = arguments.get("slice_refs")
+        policy_payload = (
+            self._mapping(arguments.get("policy_payload"), field="policy_payload")
+            if "policy_payload" in arguments
+            else self._load_mapping(self.policy_path)
+        )
+        backup_receipt = (
+            self._mapping(arguments.get("backup_receipt"), field="backup_receipt")
+            if "backup_receipt" in arguments and arguments.get("backup_receipt") is not None
+            else self._load_backup_receipt()
+        )
+        return self.surface.logical_purge_apply(
+            source_refs=[str(ref) for ref in source_refs] if isinstance(source_refs, list) else None,
+            slice_refs=[str(ref) for ref in slice_refs] if isinstance(slice_refs, list) else None,
+            include_projections=bool(arguments.get("include_projections", False)),
+            reviewer=self._string(arguments.get("reviewer"), field="reviewer"),
+            notes=self._optional_string(arguments.get("notes")),
+            policy_payload=policy_payload,
+            backup_receipt=backup_receipt,
+            confirm=bool(arguments.get("confirm", False)),
+        )
+
     def _context_receipt(self, arguments: JSONDict) -> JSONDict:
         output_path = Path(self._string(arguments.get("output_path"), field="output_path"))
         resolved_output = output_path if output_path.is_absolute() else self.root / output_path
@@ -1369,6 +1494,7 @@ class CtxVaultMcpServer:
             output_path=resolved_output.resolve(),
             receipt_output_path=resolved_receipt.resolve(),
             memory_limit=int(arguments.get("memory_limit", 5)),
+            selected_slice_refs=self._string_list(arguments.get("selected_slice_refs"), field="selected_slice_refs"),
         )
 
     def _backup_emit(self, arguments: JSONDict) -> JSONDict:
@@ -1590,6 +1716,13 @@ class CtxVaultMcpServer:
         if not isinstance(value, str):
             raise ValueError("optional string field must be a string when provided")
         return value
+
+    def _string_list(self, value: Any, *, field: str) -> list[str]:
+        if value is None:
+            return []
+        if not isinstance(value, list):
+            raise ValueError(f"{field} must be an array")
+        return [self._string(item, field=f"{field}[]") for item in value]
 
     def _bool(self, value: Any, *, field: str) -> bool:
         if not isinstance(value, bool):

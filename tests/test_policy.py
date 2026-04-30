@@ -79,6 +79,28 @@ class PolicyTests(unittest.TestCase):
         self.assertEqual(decision.decision, "redact")
         self.assertTrue(decision.redactions_required)
 
+    def test_logical_purge_requires_review_and_fresh_backup(self) -> None:
+        decision = self.engine.evaluate_operation(
+            operation="logical_purge_derived",
+            sensitivity="sensitive",
+            backup_receipt=self.backup,
+        )
+
+        self.assertEqual(decision.decision, "review_required")
+        self.assertEqual(decision.backup_status, "ok")
+        self.assertTrue(decision.requires_human_review)
+
+    def test_remote_model_external_send_is_review_gated(self) -> None:
+        decision = self.engine.evaluate_operation(
+            operation="model_external_send",
+            sensitivity="internal",
+            backup_receipt=None,
+        )
+
+        self.assertEqual(decision.decision, "review_required")
+        self.assertEqual(decision.backup_status, "not_required")
+        self.assertTrue(decision.requires_human_review)
+
 
 if __name__ == "__main__":
     unittest.main()

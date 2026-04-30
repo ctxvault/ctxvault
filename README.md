@@ -5,9 +5,10 @@ AI work needs a source of truth outside the chat window.
 CtxVault is a local context layer for preserving the decisions, constraints,
 and working state that AI tools need to carry across sessions and workflows.
 
-v0.3 is the compiled Context Injection milestone. It takes reviewed project
-docs, sessions, and Markdown notes, compiles current workstream state, and
-projects that context into AI work surfaces with receipts.
+v0.3.1 is the local-safety and context-slicing milestone on top of compiled
+Context Injection. It takes reviewed project docs, sessions, and Markdown
+notes, compiles current workstream state, slices local context into rebuildable
+read models, and projects selected context into AI work surfaces with receipts.
 
 This public repository exposes the deterministic trust floor behind that loop:
 
@@ -19,6 +20,10 @@ This public repository exposes the deterministic trust floor behind that loop:
 - read-only local diagnostics
 - Markdown-vault import bridge
 - experimental projection healthchecks and runtime receipts
+- deterministic context slicing and local context search
+- selected-slice privacy preflight receipts
+- review-gated logical purge for derived slice, search, preview, embedding,
+  and selected projection data
 - public schemas, fixtures, and deterministic tests
 
 ## Official Project
@@ -46,6 +51,8 @@ The public core is for users who want to inspect or build on:
 - local privacy and policy gates
 - artifact and receipt surfaces
 - compiled current workstream state with source refs
+- local context slice rebuild, search, and selected-slice preflight
+- explicit logical purge of derived data without a secure-wipe claim
 - Markdown-vault import as source material
 - read-only projection adapter healthchecks
 - optional local snapshot/replica backup writes
@@ -65,15 +72,20 @@ The public core currently marks these contracts as experimental:
 Experimental means they are useful and inspectable, but not yet frozen as
 long-term public semantics.
 
-## v0.3 Compiled Context
+## v0.3.1 Local Safety And Context Slicing
 
-v0.3 focuses on a sharper product path:
+v0.3.1 keeps the v0.3 compiled Context Injection path and adds the local safety
+substrate needed for safer context selection:
 
 - import project docs, sessions, and Markdown notes
 - organize them around reviewed `Workstream` state
 - compile current truth, open questions, decisions, warnings, and source refs
+- rebuild deterministic local context slices from governed sources
+- search slices locally without model, embedding, remote service, or hosted API
+- run privacy preflight before selected slices are projected
 - inject that state into `AGENTS.md`, `CLAUDE.md`, and a workstream brief
-- inspect projection receipts and read-only diagnostics
+- inspect projection receipts, privacy preflight receipts, logical purge
+  receipts, tombstones, and read-only diagnostics
 
 This is the same source-to-context-to-projection loop from M1, now made denser
 with compiled current state and explicit health visibility.
@@ -123,6 +135,25 @@ Run read-only diagnostics:
 
 ```bash
 PYTHONPATH=src python3 -m ctxvault.cli doctor --root /tmp/ctxvault-clean-verify
+```
+
+Rebuild and search deterministic local context slices:
+
+```bash
+PYTHONPATH=src python3 -m ctxvault.cli context-slice-rebuild --root /tmp/ctxvault-clean-verify
+PYTHONPATH=src python3 -m ctxvault.cli context-search --root /tmp/ctxvault-clean-verify --query "projection receipts"
+```
+
+Run selected-slice privacy preflight before injecting a slice into a target:
+
+```bash
+PYTHONPATH=src python3 -m ctxvault.cli context-selection-preflight --root /tmp/ctxvault-clean-verify --slice-ref SLICE_REF --target-kind agents-md --write-receipt
+```
+
+Plan a review-gated logical purge of derived data:
+
+```bash
+PYTHONPATH=src python3 -m ctxvault.cli logical-purge-plan --root /tmp/ctxvault-clean-verify --slice-ref SLICE_REF --include-projections
 ```
 
 Run read-only projection adapter healthchecks:
@@ -175,11 +206,15 @@ The checked-in M1 fixture evidence is in:
 - `fixtures/context-injection-m1/projections/workstream-brief-receipt.json`
 - `fixtures/m1-context-injection/README.md`
 
-## v0.3 Evidence
+## v0.3.1 Evidence
 
-The v0.3 compiled Context Injection evidence is described in:
+The v0.3.1 local safety and compiled Context Injection evidence is described
+in:
 
 - `docs/v0.3-compiled-context.md`
+- `docs/v0.3.1-release-notes.md`
+- `docs/v0.3.1-local-safety/approved-boundary-decisions.md`
+- `docs/v0.3.1-local-safety/hardening-status.md`
 - `docs/v0.3-release-notes.md`
 - `docs/v0.2-m2-developer-framework.md`
 - `docs/v0.2-m2-compatibility-evidence.md`
@@ -198,12 +233,16 @@ replace a separate offsite backup strategy.
 - `docs/experimental-contract-evolution-policy.md`
 - `docs/workstream-plan-ledger-contract.md`
 - `docs/v0.3-compiled-context.md`
+- `docs/v0.3.1-release-notes.md`
+- `docs/v0.3.1-local-safety/approved-boundary-decisions.md`
+- `docs/v0.3.1-local-safety/hardening-status.md`
 - `docs/v0.3-release-notes.md`
 - `docs/v0.2-m2-developer-framework.md`
 - `docs/v0.2-m2-compatibility-evidence.md`
 - `docs/v0.2-m2-release-notes.md`
 - `fixtures/README.md`
 - `schemas/README.md`
+- `CHANGELOG.md`
 - `TRADEMARK.md`
 
 ## Feedback
@@ -212,6 +251,8 @@ The fastest useful feedback is a concrete first-run report:
 
 - v0.3 Compiled Context feedback:
   `.github/ISSUE_TEMPLATE/workflow-pain-point.yml`
+- v0.3.1 local safety, privacy, or purge feedback:
+  `.github/ISSUE_TEMPLATE/trust-or-privacy-concern.yml`
 - v0.2/M2 Developer Framework Feedback:
   `.github/ISSUE_TEMPLATE/v0.2-m2-feedback.yml`
 - M1 Quick Feedback:

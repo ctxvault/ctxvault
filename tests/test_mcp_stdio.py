@@ -84,6 +84,10 @@ class McpServerTests(unittest.TestCase):
                 "prompt-patch.review",
                 "prompt-eval.run",
                 "privacy.scan",
+                "context.search",
+                "context.selection-preflight",
+                "logical-purge.plan",
+                "logical-purge.apply",
                 "context.receipt",
                 "audit.receipt",
                 "workstream.receipt",
@@ -146,6 +150,23 @@ class McpServerTests(unittest.TestCase):
             resolved["result"]["structuredContent"]["selected_plugin"]["id"],
             "portable-harness-projection",
         )
+
+    def test_tools_call_searches_context_slices(self) -> None:
+        self.server.surface.vault.import_core_fixtures(ROOT / "fixtures" / "core")
+        self.server.surface.context_slice_rebuild()
+
+        searched = self._request(
+            5,
+            "tools/call",
+            {
+                "name": "context.search",
+                "arguments": {"query": "local-first context layer", "limit": 3},
+            },
+        )
+
+        hits = searched["result"]["structuredContent"]
+        self.assertTrue(hits)
+        self.assertEqual(hits[0]["payload"]["schema_id"], "ctxvault.context-slice/v1")
 
     def test_tools_call_emits_agents_md_projection(self) -> None:
         workstream = json.loads((ROOT / "fixtures" / "core" / "workstream.json").read_text())

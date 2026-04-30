@@ -1203,6 +1203,91 @@ class CtxVaultSurface:
             for hit in hits
         ]
 
+    def context_slice_rebuild(self) -> dict[str, Any]:
+        return self.vault.rebuild_context_slices()
+
+    def context_search(
+        self,
+        query: str,
+        *,
+        scope_kind: str | None = None,
+        scope_value: str | None = None,
+        workstream_ref: str | None = None,
+        limit: int = 10,
+        include_blocked: bool = False,
+    ) -> list[dict[str, Any]]:
+        scope = (scope_kind, scope_value) if scope_kind and scope_value else None
+        hits = self.vault.search_context_slices(
+            query,
+            scope=scope,
+            workstream_ref=workstream_ref,
+            limit=limit,
+            include_blocked=include_blocked,
+        )
+        return [
+            {
+                "slice_id": hit.object_id,
+                "slice_ref": hit.semantic_ref,
+                "source_ref": hit.storage_ref,
+                "score": hit.score,
+                "payload": hit.payload,
+            }
+            for hit in hits
+        ]
+
+    def context_selection_preflight(
+        self,
+        slice_refs: list[str],
+        *,
+        target_kind: str,
+        query: str | None = None,
+        workstream_ref: str | None = None,
+        write_receipt: bool = False,
+    ) -> dict[str, Any]:
+        return self.vault.preflight_context_selection(
+            slice_refs,
+            target_kind=target_kind,
+            query=query,
+            workstream_ref=workstream_ref,
+            write_receipt=write_receipt,
+        )
+
+    def logical_purge_plan(
+        self,
+        *,
+        source_refs: list[str] | None = None,
+        slice_refs: list[str] | None = None,
+        include_projections: bool = False,
+    ) -> dict[str, Any]:
+        return self.vault.plan_logical_purge(
+            source_refs=source_refs,
+            slice_refs=slice_refs,
+            include_projections=include_projections,
+        )
+
+    def logical_purge_apply(
+        self,
+        *,
+        source_refs: list[str] | None = None,
+        slice_refs: list[str] | None = None,
+        include_projections: bool = False,
+        reviewer: str,
+        notes: str | None = None,
+        policy_payload: dict[str, Any] | None = None,
+        backup_receipt: dict[str, Any] | None = None,
+        confirm: bool = False,
+    ) -> dict[str, Any]:
+        return self.vault.apply_logical_purge(
+            source_refs=source_refs,
+            slice_refs=slice_refs,
+            include_projections=include_projections,
+            reviewer=reviewer,
+            notes=notes,
+            policy_payload=policy_payload,
+            backup_receipt=backup_receipt,
+            confirm=confirm,
+        )
+
     def context_build(self, request: dict[str, Any]) -> dict[str, Any]:
         active_task_state = tuple(
             ContextItemInput(ref=item["ref"], content=item["content"])
@@ -1528,12 +1613,18 @@ class CtxVaultSurface:
         output_path: Path,
         receipt_output_path: Path,
         memory_limit: int = 5,
+        selected_slice_refs: list[str] | None = None,
     ) -> dict[str, Any]:
         workstream = self._load_object_payload("workstream", workstream_id)
         if workstream.get("approval_state") != "approved":
             raise ValueError(f"workstream {workstream_id} must be approved before projection")
         memories = self._load_projection_memories(scope=workstream["scope"], limit=memory_limit)
         compiled_state = self.compiled_workstream_state(workstream_id, limit=memory_limit)
+        privacy_preflight = self._projection_privacy_preflight(
+            selected_slice_refs=selected_slice_refs,
+            target_kind="harness.agents-md",
+            workstream_id=workstream_id,
+        )
         return emit_agents_md_projection(
             root=self.vault.layout.repo_root,
             output_path=output_path,
@@ -1541,6 +1632,8 @@ class CtxVaultSurface:
             workstream_payload=workstream,
             memory_payloads=memories,
             compiled_state_payload=compiled_state,
+            selected_context_slices=_selected_slices_from_preflight(privacy_preflight),
+            privacy_preflight=privacy_preflight,
         )
 
     def harness_claude_md_emit(
@@ -1550,12 +1643,18 @@ class CtxVaultSurface:
         output_path: Path,
         receipt_output_path: Path,
         memory_limit: int = 5,
+        selected_slice_refs: list[str] | None = None,
     ) -> dict[str, Any]:
         workstream = self._load_object_payload("workstream", workstream_id)
         if workstream.get("approval_state") != "approved":
             raise ValueError(f"workstream {workstream_id} must be approved before projection")
         memories = self._load_projection_memories(scope=workstream["scope"], limit=memory_limit)
         compiled_state = self.compiled_workstream_state(workstream_id, limit=memory_limit)
+        privacy_preflight = self._projection_privacy_preflight(
+            selected_slice_refs=selected_slice_refs,
+            target_kind="harness.claude-md",
+            workstream_id=workstream_id,
+        )
         return emit_claude_md_projection(
             root=self.vault.layout.repo_root,
             output_path=output_path,
@@ -1563,6 +1662,8 @@ class CtxVaultSurface:
             workstream_payload=workstream,
             memory_payloads=memories,
             compiled_state_payload=compiled_state,
+            selected_context_slices=_selected_slices_from_preflight(privacy_preflight),
+            privacy_preflight=privacy_preflight,
         )
 
     def wiki_workstream_markdown_emit(
@@ -1572,12 +1673,18 @@ class CtxVaultSurface:
         output_path: Path,
         receipt_output_path: Path,
         memory_limit: int = 5,
+        selected_slice_refs: list[str] | None = None,
     ) -> dict[str, Any]:
         workstream = self._load_object_payload("workstream", workstream_id)
         if workstream.get("approval_state") != "approved":
             raise ValueError(f"workstream {workstream_id} must be approved before projection")
         memories = self._load_projection_memories(scope=workstream["scope"], limit=memory_limit)
         compiled_state = self.compiled_workstream_state(workstream_id, limit=memory_limit)
+        privacy_preflight = self._projection_privacy_preflight(
+            selected_slice_refs=selected_slice_refs,
+            target_kind="wiki.markdown-workstream",
+            workstream_id=workstream_id,
+        )
         return emit_wiki_workstream_md_projection(
             root=self.vault.layout.repo_root,
             output_path=output_path,
@@ -1585,7 +1692,31 @@ class CtxVaultSurface:
             workstream_payload=workstream,
             memory_payloads=memories,
             compiled_state_payload=compiled_state,
+            selected_context_slices=_selected_slices_from_preflight(privacy_preflight),
+            privacy_preflight=privacy_preflight,
         )
+
+    def _projection_privacy_preflight(
+        self,
+        *,
+        selected_slice_refs: list[str] | None,
+        target_kind: str,
+        workstream_id: str,
+    ) -> dict[str, Any] | None:
+        refs = [str(ref).strip() for ref in selected_slice_refs or [] if str(ref).strip()]
+        if not refs:
+            return None
+        result = self.context_selection_preflight(
+            refs,
+            target_kind=target_kind,
+            workstream_ref=f"workstream://{workstream_id}",
+            write_receipt=True,
+        )
+        receipt = result["receipt"]
+        if receipt["decision"] == "block":
+            reasons = "; ".join(str(reason) for reason in receipt.get("reasons", []))
+            raise ValueError(f"context selection preflight blocked projection: {reasons}")
+        return receipt
 
     def doctor_report(self) -> dict[str, Any]:
         return build_doctor_report(self.vault.layout.repo_root)
@@ -2174,6 +2305,7 @@ class CtxVaultSurface:
             output_path=Path(str(arguments["output_path"])),
             receipt_output_path=Path(str(arguments["receipt_output_path"])),
             memory_limit=int(arguments.get("memory_limit", 5)),
+            selected_slice_refs=_optional_string_list(arguments.get("selected_slice_refs")),
         )
 
     def _execute_projection_harness_claude_md(self, arguments: dict[str, Any]) -> dict[str, Any]:
@@ -2182,6 +2314,7 @@ class CtxVaultSurface:
             output_path=Path(str(arguments["output_path"])),
             receipt_output_path=Path(str(arguments["receipt_output_path"])),
             memory_limit=int(arguments.get("memory_limit", 5)),
+            selected_slice_refs=_optional_string_list(arguments.get("selected_slice_refs")),
         )
 
     def _execute_projection_wiki_markdown_workstream(self, arguments: dict[str, Any]) -> dict[str, Any]:
@@ -2190,6 +2323,7 @@ class CtxVaultSurface:
             output_path=Path(str(arguments["output_path"])),
             receipt_output_path=Path(str(arguments["receipt_output_path"])),
             memory_limit=int(arguments.get("memory_limit", 5)),
+            selected_slice_refs=_optional_string_list(arguments.get("selected_slice_refs")),
         )
 
 
@@ -2802,3 +2936,18 @@ def _companion_session_sort_key(payload: dict[str, Any]) -> tuple[str, str]:
         str(payload.get("ended_at") or payload.get("started_at") or ""),
         str(payload.get("id") or ""),
     )
+
+
+def _selected_slices_from_preflight(privacy_preflight: dict[str, Any] | None) -> list[dict[str, Any]]:
+    if not privacy_preflight:
+        return []
+    selected = privacy_preflight.get("selected_slices")
+    return [dict(item) for item in selected if isinstance(item, dict)] if isinstance(selected, list) else []
+
+
+def _optional_string_list(value: Any) -> list[str]:
+    if value is None:
+        return []
+    if not isinstance(value, list):
+        raise ValueError("selected_slice_refs must be a list when provided")
+    return [str(item).strip() for item in value if str(item).strip()]

@@ -16,6 +16,7 @@ def render_agents_md(
     workstream_payload: dict[str, Any],
     memory_payloads: list[dict[str, Any]],
     compiled_state_payload: dict[str, Any] | None = None,
+    selected_context_slices: list[dict[str, Any]] | None = None,
 ) -> str:
     scope = workstream_payload.get("scope", {})
     task_labels = workstream_payload.get("task_labels", [])
@@ -58,6 +59,7 @@ def render_agents_md(
         )
 
     lines.extend(_compiled_state_lines(compiled_state_payload, heading="Compiled Workstream State"))
+    lines.extend(_selected_context_slice_lines(selected_context_slices))
 
     lines.extend(["", "## Durable Operating Rules", ""])
     if memory_payloads:
@@ -94,6 +96,7 @@ def render_claude_md(
     workstream_payload: dict[str, Any],
     memory_payloads: list[dict[str, Any]],
     compiled_state_payload: dict[str, Any] | None = None,
+    selected_context_slices: list[dict[str, Any]] | None = None,
 ) -> str:
     scope = workstream_payload.get("scope", {})
     task_labels = workstream_payload.get("task_labels", [])
@@ -136,6 +139,7 @@ def render_claude_md(
         )
 
     lines.extend(_compiled_state_lines(compiled_state_payload, heading="Compiled Workstream State"))
+    lines.extend(_selected_context_slice_lines(selected_context_slices))
 
     lines.extend(["", "## Durable Rules", ""])
     if memory_payloads:
@@ -172,6 +176,7 @@ def render_wiki_workstream_md(
     workstream_payload: dict[str, Any],
     memory_payloads: list[dict[str, Any]],
     compiled_state_payload: dict[str, Any] | None = None,
+    selected_context_slices: list[dict[str, Any]] | None = None,
 ) -> str:
     scope = workstream_payload.get("scope", {})
     task_labels = workstream_payload.get("task_labels", [])
@@ -213,6 +218,7 @@ def render_wiki_workstream_md(
         )
 
     lines.extend(_compiled_state_lines(compiled_state_payload, heading="Current Truth"))
+    lines.extend(_selected_context_slice_lines(selected_context_slices))
 
     lines.extend(["", "## Durable Rules", ""])
     if memory_payloads:
@@ -285,6 +291,29 @@ def _compiled_state_lines(compiled_state_payload: dict[str, Any] | None, *, head
     return lines
 
 
+def _selected_context_slice_lines(selected_context_slices: list[dict[str, Any]] | None) -> list[str]:
+    if not selected_context_slices:
+        return []
+    lines = ["", "## Selected Context Slices", ""]
+    for item in selected_context_slices:
+        slice_ref = str(item.get("slice_ref") or "").strip()
+        source_ref = str(item.get("source_ref") or "").strip()
+        title = str(item.get("title") or slice_ref or "Selected slice").strip()
+        preview = str(item.get("redacted_preview") or "").strip()
+        privacy_class = str(item.get("privacy_class") or "unknown").strip()
+        lines.append(f"- {title}")
+        if slice_ref:
+            lines.append(f"  - Slice: `{slice_ref}`")
+        if source_ref:
+            lines.append(f"  - Source: `{source_ref}`")
+        lines.append(f"  - Privacy: `{privacy_class}`")
+        if preview:
+            lines.append(f"  - Preview: {preview}")
+        else:
+            lines.append("  - Preview: [metadata only]")
+    return lines
+
+
 def emit_agents_md_projection(
     *,
     root: Path,
@@ -293,11 +322,14 @@ def emit_agents_md_projection(
     workstream_payload: dict[str, Any],
     memory_payloads: list[dict[str, Any]],
     compiled_state_payload: dict[str, Any] | None = None,
+    selected_context_slices: list[dict[str, Any]] | None = None,
+    privacy_preflight: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     rendered = render_agents_md(
         workstream_payload=workstream_payload,
         memory_payloads=memory_payloads,
         compiled_state_payload=compiled_state_payload,
+        selected_context_slices=selected_context_slices,
     )
     resolved_output = output_path.resolve()
     resolved_output.parent.mkdir(parents=True, exist_ok=True)
@@ -306,6 +338,7 @@ def emit_agents_md_projection(
     output_sha256 = hashlib.sha256(output_bytes).hexdigest()
     workstream_ref = f"workstream://{workstream_payload['id']}"
     memory_refs = [f"memory://{memory['id']}" for memory in memory_payloads]
+    selected_slice_refs = _selected_slice_refs(selected_context_slices)
 
     receipt_payload = {
         "receipt_id": f"projection_receipt_{workstream_payload['id']}_agents_md",
@@ -313,8 +346,8 @@ def emit_agents_md_projection(
         "projection_kind": "harness",
         "target_kind": "harness.agents-md",
         "target_path": str(resolved_output),
-        "source_refs": [workstream_ref, *memory_refs],
-        "source_object_kinds": ["Workstream", *(["Memory"] if memory_payloads else [])],
+        "source_refs": [workstream_ref, *memory_refs, *selected_slice_refs],
+        "source_object_kinds": ["Workstream", *(["Memory"] if memory_payloads else []), *(["ContextSlice"] if selected_slice_refs else [])],
         "scope": dict(workstream_payload["scope"]),
         "plugin_id": PORTABLE_HARNESS_PLUGIN_ID,
         "plugin_version": PORTABLE_HARNESS_PLUGIN_VERSION,
@@ -326,6 +359,8 @@ def emit_agents_md_projection(
         "policy_decision": "allow",
         "review_state": _projection_review_state(workstream_payload),
         "warnings": [],
+        "selected_slice_refs": selected_slice_refs,
+        "privacy_preflight": privacy_preflight,
     }
     receipt = emit_projection_receipt(
         root=root,
@@ -354,11 +389,14 @@ def emit_claude_md_projection(
     workstream_payload: dict[str, Any],
     memory_payloads: list[dict[str, Any]],
     compiled_state_payload: dict[str, Any] | None = None,
+    selected_context_slices: list[dict[str, Any]] | None = None,
+    privacy_preflight: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     rendered = render_claude_md(
         workstream_payload=workstream_payload,
         memory_payloads=memory_payloads,
         compiled_state_payload=compiled_state_payload,
+        selected_context_slices=selected_context_slices,
     )
     resolved_output = output_path.resolve()
     resolved_output.parent.mkdir(parents=True, exist_ok=True)
@@ -367,6 +405,7 @@ def emit_claude_md_projection(
     output_sha256 = hashlib.sha256(output_bytes).hexdigest()
     workstream_ref = f"workstream://{workstream_payload['id']}"
     memory_refs = [f"memory://{memory['id']}" for memory in memory_payloads]
+    selected_slice_refs = _selected_slice_refs(selected_context_slices)
 
     receipt_payload = {
         "receipt_id": f"projection_receipt_{workstream_payload['id']}_claude_md",
@@ -374,8 +413,8 @@ def emit_claude_md_projection(
         "projection_kind": "harness",
         "target_kind": "harness.claude-md",
         "target_path": str(resolved_output),
-        "source_refs": [workstream_ref, *memory_refs],
-        "source_object_kinds": ["Workstream", *(["Memory"] if memory_payloads else [])],
+        "source_refs": [workstream_ref, *memory_refs, *selected_slice_refs],
+        "source_object_kinds": ["Workstream", *(["Memory"] if memory_payloads else []), *(["ContextSlice"] if selected_slice_refs else [])],
         "scope": dict(workstream_payload["scope"]),
         "plugin_id": PORTABLE_HARNESS_PLUGIN_ID,
         "plugin_version": PORTABLE_HARNESS_PLUGIN_VERSION,
@@ -387,6 +426,8 @@ def emit_claude_md_projection(
         "policy_decision": "allow",
         "review_state": _projection_review_state(workstream_payload),
         "warnings": [],
+        "selected_slice_refs": selected_slice_refs,
+        "privacy_preflight": privacy_preflight,
     }
     receipt = emit_projection_receipt(
         root=root,
@@ -415,11 +456,14 @@ def emit_wiki_workstream_md_projection(
     workstream_payload: dict[str, Any],
     memory_payloads: list[dict[str, Any]],
     compiled_state_payload: dict[str, Any] | None = None,
+    selected_context_slices: list[dict[str, Any]] | None = None,
+    privacy_preflight: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     rendered = render_wiki_workstream_md(
         workstream_payload=workstream_payload,
         memory_payloads=memory_payloads,
         compiled_state_payload=compiled_state_payload,
+        selected_context_slices=selected_context_slices,
     )
     resolved_output = output_path.resolve()
     resolved_output.parent.mkdir(parents=True, exist_ok=True)
@@ -428,6 +472,7 @@ def emit_wiki_workstream_md_projection(
     output_sha256 = hashlib.sha256(output_bytes).hexdigest()
     workstream_ref = f"workstream://{workstream_payload['id']}"
     memory_refs = [f"memory://{memory['id']}" for memory in memory_payloads]
+    selected_slice_refs = _selected_slice_refs(selected_context_slices)
 
     receipt_payload = {
         "receipt_id": f"projection_receipt_{workstream_payload['id']}_wiki_md",
@@ -435,8 +480,8 @@ def emit_wiki_workstream_md_projection(
         "projection_kind": "wiki",
         "target_kind": "wiki.markdown-workstream",
         "target_path": str(resolved_output),
-        "source_refs": [workstream_ref, *memory_refs],
-        "source_object_kinds": ["Workstream", *(["Memory"] if memory_payloads else [])],
+        "source_refs": [workstream_ref, *memory_refs, *selected_slice_refs],
+        "source_object_kinds": ["Workstream", *(["Memory"] if memory_payloads else []), *(["ContextSlice"] if selected_slice_refs else [])],
         "scope": dict(workstream_payload["scope"]),
         "plugin_id": PORTABLE_HARNESS_PLUGIN_ID,
         "plugin_version": PORTABLE_HARNESS_PLUGIN_VERSION,
@@ -448,6 +493,8 @@ def emit_wiki_workstream_md_projection(
         "policy_decision": "allow",
         "review_state": _projection_review_state(workstream_payload),
         "warnings": [],
+        "selected_slice_refs": selected_slice_refs,
+        "privacy_preflight": privacy_preflight,
     }
     receipt = emit_projection_receipt(
         root=root,
@@ -470,3 +517,11 @@ def emit_wiki_workstream_md_projection(
 
 def _projection_review_state(workstream_payload: dict[str, Any]) -> str:
     return str(workstream_payload.get("approval_state") or "generated")
+
+
+def _selected_slice_refs(selected_context_slices: list[dict[str, Any]] | None) -> list[str]:
+    return [
+        str(item.get("slice_ref")).strip()
+        for item in selected_context_slices or []
+        if str(item.get("slice_ref") or "").strip()
+    ]

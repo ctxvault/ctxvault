@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import Enum
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -32,6 +33,8 @@ class OperationKind(str, Enum):
     INDEX_REBUILD = "index_rebuild"
     DESTRUCTIVE_REDACTION = "destructive_redaction"
     REDACTION_REVERSAL = "redaction_reversal"
+    LOGICAL_PURGE_DERIVED = "logical_purge_derived"
+    MODEL_EXTERNAL_SEND = "model_external_send"
 
 
 class BackupStatus(str, Enum):
@@ -202,6 +205,8 @@ class ProjectionReceipt(CtxVaultControlsModel):
     policy_decision: ExportAction
     review_state: ProjectionReviewState
     warnings: list[str] = Field(default_factory=list)
+    selected_slice_refs: list[str] = Field(default_factory=list)
+    privacy_preflight: dict[str, Any] | None = None
 
 
 MODEL_REGISTRY = {

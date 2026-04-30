@@ -69,7 +69,9 @@
         "context_export",
         "index_rebuild",
         "destructive_redaction",
-        "redaction_reversal"
+        "redaction_reversal",
+        "logical_purge_derived",
+        "model_external_send"
       ]
     },
     "BackupStatus": {
@@ -320,7 +322,9 @@
         "output_status": { "$ref": "#/$defs/ProjectionOutputStatus" },
         "policy_decision": { "$ref": "#/$defs/ExportAction" },
         "review_state": { "$ref": "#/$defs/ProjectionReviewState" },
-        "warnings": { "$ref": "#/$defs/StringArray" }
+        "warnings": { "$ref": "#/$defs/StringArray" },
+        "selected_slice_refs": { "$ref": "#/$defs/ReferenceArray" },
+        "privacy_preflight": { "type": ["object", "null"] }
       }
     }
   }

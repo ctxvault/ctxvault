@@ -264,6 +264,8 @@ def emit_projection_receipt(
         "policy_decision": str(projection_payload["policy_decision"]),
         "review_state": str(projection_payload["review_state"]),
         "warnings": list(projection_payload.get("warnings", [])),
+        "selected_slice_refs": list(projection_payload.get("selected_slice_refs", [])),
+        "privacy_preflight": projection_payload.get("privacy_preflight"),
         "plan_ledger_artifact": _plan_ledger_artifact_hint(
             artifact_type="ctxvault_projection_receipt",
             artifact_path=resolved_output,

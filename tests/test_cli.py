@@ -167,6 +167,76 @@ class CliBoundaryTests(unittest.TestCase):
             self.assertEqual(payload["contract_state"], "experimental_read_model")
             self.assertEqual(payload["workstream_ref"], "workstream://ws_20260421_ctxvault_schema")
 
+    def test_context_slice_cli_rebuild_search_and_preflight(self) -> None:
+        with TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            surface = CtxVaultSurface(CtxVault(default_layout(root)))
+            surface.vault.import_core_fixtures(ROOT / "fixtures" / "core")
+
+            rebuild_code, rebuild_stdout = self.run_cli("context-slice-rebuild", "--root", str(root))
+            self.assertEqual(rebuild_code, 0)
+            rebuild = json.loads(rebuild_stdout)
+            self.assertGreater(rebuild["slice_count"], 0)
+
+            search_code, search_stdout = self.run_cli(
+                "context-search",
+                "--root",
+                str(root),
+                "--query",
+                "local-first context layer",
+            )
+            self.assertEqual(search_code, 0)
+            hits = json.loads(search_stdout)
+            self.assertTrue(hits)
+            self.assertEqual(hits[0]["payload"]["schema_id"], "ctxvault.context-slice/v1")
+
+            preflight_code, preflight_stdout = self.run_cli(
+                "context-selection-preflight",
+                "--root",
+                str(root),
+                "--slice-ref",
+                hits[0]["slice_ref"],
+                "--target-kind",
+                "harness.agents-md",
+            )
+            self.assertEqual(preflight_code, 0)
+            preflight = json.loads(preflight_stdout)
+            self.assertIn(preflight["receipt"]["decision"], {"allow", "redact", "review", "block"})
+            self.assertEqual(preflight["receipt"]["selected_slice_refs"], [hits[0]["slice_ref"]])
+
+    def test_logical_purge_cli_requires_reviewed_apply(self) -> None:
+        with TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            surface = CtxVaultSurface(CtxVault(default_layout(root)))
+            surface.vault.import_core_fixtures(ROOT / "fixtures" / "core")
+            self.run_cli("context-slice-rebuild", "--root", str(root))
+
+            plan_code, plan_stdout = self.run_cli(
+                "logical-purge-plan",
+                "--root",
+                str(root),
+                "--source-ref",
+                "knowledge://know_proj_ctxvault_profile_v1",
+            )
+            self.assertEqual(plan_code, 0)
+            plan = json.loads(plan_stdout)
+            self.assertGreater(plan["would_delete"]["context_slice_rows"], 0)
+
+            apply_code, apply_stdout = self.run_cli(
+                "logical-purge-apply",
+                "--root",
+                str(root),
+                "--source-ref",
+                "knowledge://know_proj_ctxvault_profile_v1",
+                "--reviewer",
+                "privacy-review",
+                "--confirm",
+            )
+            self.assertEqual(apply_code, 0)
+            receipt = json.loads(apply_stdout)
+            self.assertEqual(receipt["receipt"]["operation"], "logical_purge_derived")
+            self.assertTrue(Path(receipt["receipt_path"]).exists())
+
     def test_doctor_cli_is_read_only(self) -> None:
         with TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
@@ -423,6 +493,33 @@ class CliBoundaryTests(unittest.TestCase):
             self.assertEqual(payload["receipt"]["target_kind"], "wiki.markdown-workstream")
             self.assertTrue((root / "exports" / "wiki.md").exists())
             self.assertTrue((root / "artifacts" / "wiki-receipt.json").exists())
+
+    def test_emit_wiki_projection_with_slice_ref_records_preflight(self) -> None:
+        with TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            surface = CtxVaultSurface(CtxVault(default_layout(root)))
+            surface.vault.import_core_fixtures(ROOT / "fixtures" / "core")
+            surface.context_slice_rebuild()
+            hit = surface.context_search("local-first context layer", scope_kind="project", scope_value="ctxvault")[0]
+
+            code, stdout = self.run_cli(
+                "emit-wiki-projection",
+                "--root",
+                str(root),
+                "--workstream-id",
+                "ws_20260421_ctxvault_schema",
+                "--output-path",
+                "exports/wiki.md",
+                "--receipt-output-path",
+                "artifacts/wiki-receipt.json",
+                "--slice-ref",
+                hit["slice_ref"],
+            )
+
+            self.assertEqual(code, 0)
+            payload = json.loads(stdout)
+            self.assertEqual(payload["receipt"]["selected_slice_refs"], [hit["slice_ref"]])
+            self.assertEqual(payload["receipt"]["privacy_preflight"]["schema_id"], "ctxvault.privacy-preflight-receipt/v1")
 
 
 if __name__ == "__main__":
