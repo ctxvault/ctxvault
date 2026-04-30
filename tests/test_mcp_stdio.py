@@ -69,6 +69,7 @@ class McpServerTests(unittest.TestCase):
                 "workstream.preview",
                 "workstream.list",
                 "workstream.intelligence",
+                "workstream.compiled-state",
                 "workstream-candidate.create",
                 "workstream-candidate.list",
                 "workstream-candidate.review",
@@ -94,6 +95,7 @@ class McpServerTests(unittest.TestCase):
                 "export.check",
                 "adapter.status",
                 "adapter.resolve",
+                "doctor.report",
                 "plugin.status",
                 "plugin.resolve",
                 "plugin.execute",
@@ -405,8 +407,16 @@ class McpServerTests(unittest.TestCase):
                 "arguments": {"workstream_id": "ws_mcp_schema_flow", "limit": 6},
             },
         )
-        candidate_receipt = self._request(
+        compiled_state = self._request(
             11,
+            "tools/call",
+            {
+                "name": "workstream.compiled-state",
+                "arguments": {"workstream_id": "ws_mcp_schema_flow", "limit": 6},
+            },
+        )
+        candidate_receipt = self._request(
+            12,
             "tools/call",
             {
                 "name": "workstream-candidate.receipt",
@@ -418,7 +428,7 @@ class McpServerTests(unittest.TestCase):
             },
         )
         workstream_receipt = self._request(
-            12,
+            13,
             "tools/call",
             {
                 "name": "workstream.receipt",
@@ -443,6 +453,14 @@ class McpServerTests(unittest.TestCase):
         )
         self.assertGreaterEqual(intelligence["result"]["structuredContent"]["summary"]["gap_count"], 1)
         self.assertEqual(
+            compiled_state["result"]["structuredContent"]["schema_id"],
+            "ctxvault.compiled-workstream-state/v1",
+        )
+        self.assertEqual(
+            compiled_state["result"]["structuredContent"]["contract_state"],
+            "experimental_read_model",
+        )
+        self.assertEqual(
             candidate_receipt["result"]["structuredContent"]["receipt"]["plan_ledger_artifact"]["artifact_type"],
             "ctxvault_workstream_candidate_receipt",
         )
@@ -450,6 +468,21 @@ class McpServerTests(unittest.TestCase):
             workstream_receipt["result"]["structuredContent"]["receipt"]["plan_ledger_artifact"]["artifact_type"],
             "ctxvault_workstream_receipt",
         )
+
+    def test_tools_call_runs_read_only_doctor_report(self) -> None:
+        report = self._request(
+            3,
+            "tools/call",
+            {
+                "name": "doctor.report",
+                "arguments": {},
+            },
+        )
+
+        payload = report["result"]["structuredContent"]
+        self.assertEqual(payload["schema_id"], "ctxvault.doctor-report/v1")
+        self.assertEqual(payload["mode"], "read_only")
+        self.assertTrue(all(check["read_only"] for check in payload["checks"]))
 
     def test_tools_call_routes_requests_and_returns_structured_content(self) -> None:
         recorded = self._request(

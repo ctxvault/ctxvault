@@ -5,10 +5,9 @@ AI work needs a source of truth outside the chat window.
 CtxVault is a local context layer for preserving the decisions, constraints,
 and working state that AI tools need to carry across sessions and workflows.
 
-v0.2 is a developer-framework milestone. It keeps the reviewed
-source-to-context-to-projection loop from M1 and adds read-only projection
-adapter healthchecks, runtime receipt evidence, review ergonomics, and optional
-local snapshot/replica backup writes.
+v0.3 is the compiled Context Injection milestone. It takes reviewed project
+docs, sessions, and Markdown notes, compiles current workstream state, and
+projects that context into AI work surfaces with receipts.
 
 This public repository exposes the deterministic trust floor behind that loop:
 
@@ -16,6 +15,9 @@ This public repository exposes the deterministic trust floor behind that loop:
 - deterministic policy, privacy, and receipt surfaces
 - CLI and MCP entry points over the same local core
 - review-gated promotion and projection receipts
+- experimental compiled workstream state
+- read-only local diagnostics
+- Markdown-vault import bridge
 - experimental projection healthchecks and runtime receipts
 - public schemas, fixtures, and deterministic tests
 
@@ -43,6 +45,8 @@ The public core is for users who want to inspect or build on:
 - deterministic review-gated promotion flows
 - local privacy and policy gates
 - artifact and receipt surfaces
+- compiled current workstream state with source refs
+- Markdown-vault import as source material
 - read-only projection adapter healthchecks
 - optional local snapshot/replica backup writes
 
@@ -51,6 +55,8 @@ The public core currently marks these contracts as experimental:
 - `src/ctxvault/intelligence.py`
 - `Episode`
 - `Workstream`
+- compiled workstream state read model
+- `doctor` report
 - plugin manifest and projection receipt contracts
 - the first local plugin executor paths for context injection targets
 - projection adapter healthchecks
@@ -59,17 +65,18 @@ The public core currently marks these contracts as experimental:
 Experimental means they are useful and inspectable, but not yet frozen as
 long-term public semantics.
 
-## v0.2 Developer Framework
+## v0.3 Compiled Context
 
-v0.2 focuses on making the local context core easier to inspect and integrate
-with real AI work surfaces:
+v0.3 focuses on a sharper product path:
 
-- projection adapter healthchecks for `AGENTS.md`, `CLAUDE.md`, and workstream
-  briefs
-- runtime receipt evidence attached to healthcheck output
-- governed review flows that keep ranking advisory
-- optional local backup writes from a governed snapshot into an explicit local
-  file target
+- import project docs, sessions, and Markdown notes
+- organize them around reviewed `Workstream` state
+- compile current truth, open questions, decisions, warnings, and source refs
+- inject that state into `AGENTS.md`, `CLAUDE.md`, and a workstream brief
+- inspect projection receipts and read-only diagnostics
+
+This is the same source-to-context-to-projection loop from M1, now made denser
+with compiled current state and explicit health visibility.
 
 CtxVault remains a local context layer for AI work, not a single-harness memory
 plugin. ChatGPT, Claude.ai, DeepSeek, local Ollama-style UIs, Claude Code,
@@ -98,6 +105,24 @@ Emit reviewed context projections:
 PYTHONPATH=src python3 -m ctxvault.cli emit-agents-projection --root /tmp/ctxvault-clean-verify --workstream-id ws_20260421_ctxvault_schema --output-path exports/AGENTS.md --receipt-output-path artifacts/agents-md-receipt.json
 PYTHONPATH=src python3 -m ctxvault.cli emit-claude-projection --root /tmp/ctxvault-clean-verify --workstream-id ws_20260421_ctxvault_schema --output-path exports/CLAUDE.md --receipt-output-path artifacts/claude-md-receipt.json
 PYTHONPATH=src python3 -m ctxvault.cli emit-wiki-projection --root /tmp/ctxvault-clean-verify --workstream-id ws_20260421_ctxvault_schema --output-path exports/workstream.md --receipt-output-path artifacts/workstream-md-receipt.json
+```
+
+Build compiled workstream state:
+
+```bash
+PYTHONPATH=src python3 -m ctxvault.cli compiled-workstream-state --root /tmp/ctxvault-clean-verify --workstream-id ws_20260421_ctxvault_schema
+```
+
+Import a Markdown vault as source material:
+
+```bash
+PYTHONPATH=src python3 -m ctxvault.cli markdown-vault-import --root /tmp/ctxvault-clean-verify --vault-path /path/to/notes --scope-kind project --scope-value ctxvault
+```
+
+Run read-only diagnostics:
+
+```bash
+PYTHONPATH=src python3 -m ctxvault.cli doctor --root /tmp/ctxvault-clean-verify
 ```
 
 Run read-only projection adapter healthchecks:
@@ -150,10 +175,12 @@ The checked-in M1 fixture evidence is in:
 - `fixtures/context-injection-m1/projections/workstream-brief-receipt.json`
 - `fixtures/m1-context-injection/README.md`
 
-## v0.2 Evidence
+## v0.3 Evidence
 
-The v0.2 developer-framework evidence is described in:
+The v0.3 compiled Context Injection evidence is described in:
 
+- `docs/v0.3-compiled-context.md`
+- `docs/v0.3-release-notes.md`
 - `docs/v0.2-m2-developer-framework.md`
 - `docs/v0.2-m2-compatibility-evidence.md`
 - `docs/v0.2-m2-release-notes.md`
@@ -170,6 +197,8 @@ replace a separate offsite backup strategy.
 - `docs/public-release-checklist.md`
 - `docs/experimental-contract-evolution-policy.md`
 - `docs/workstream-plan-ledger-contract.md`
+- `docs/v0.3-compiled-context.md`
+- `docs/v0.3-release-notes.md`
 - `docs/v0.2-m2-developer-framework.md`
 - `docs/v0.2-m2-compatibility-evidence.md`
 - `docs/v0.2-m2-release-notes.md`
@@ -181,6 +210,8 @@ replace a separate offsite backup strategy.
 
 The fastest useful feedback is a concrete first-run report:
 
+- v0.3 Compiled Context feedback:
+  `.github/ISSUE_TEMPLATE/workflow-pain-point.yml`
 - v0.2/M2 Developer Framework Feedback:
   `.github/ISSUE_TEMPLATE/v0.2-m2-feedback.yml`
 - M1 Quick Feedback:

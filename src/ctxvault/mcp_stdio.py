@@ -149,6 +149,20 @@ class CtxVaultMcpServer:
                     handler=self._workstream_intelligence,
                 ),
                 ToolSpec(
+                    name="workstream.compiled-state",
+                    description="Build the experimental compiled workstream state read model.",
+                    input_schema={
+                        "type": "object",
+                        "properties": {
+                            "workstream_id": {"type": "string"},
+                            "limit": {"type": "integer", "minimum": 1},
+                        },
+                        "required": ["workstream_id"],
+                        "additionalProperties": False,
+                    },
+                    handler=self._workstream_compiled_state,
+                ),
+                ToolSpec(
                     name="workstream-candidate.create",
                     description="Create a durable workstream candidate from a workstream preview.",
                     input_schema={
@@ -576,6 +590,16 @@ class CtxVaultMcpServer:
                         "additionalProperties": False,
                     },
                     handler=self._adapter_resolve,
+                ),
+                ToolSpec(
+                    name="doctor.report",
+                    description="Run read-only local diagnostics.",
+                    input_schema={
+                        "type": "object",
+                        "properties": {},
+                        "additionalProperties": False,
+                    },
+                    handler=self._doctor_report,
                 ),
                 ToolSpec(
                     name="plugin.status",
@@ -1045,6 +1069,12 @@ class CtxVaultMcpServer:
             limit=int(arguments.get("limit", 6)),
         )
 
+    def _workstream_compiled_state(self, arguments: JSONDict) -> JSONDict:
+        return self.surface.compiled_workstream_state(
+            self._string(arguments.get("workstream_id"), field="workstream_id"),
+            limit=int(arguments.get("limit", 6)),
+        )
+
     def _workstream_candidate_create(self, arguments: JSONDict) -> JSONDict:
         return self.surface.workstream_candidate_create(
             self._string(arguments.get("session_id"), field="session_id"),
@@ -1303,6 +1333,9 @@ class CtxVaultMcpServer:
             self._profiles(arguments.get("profiles")),
             self._string(arguments.get("capability"), field="capability"),
         )
+
+    def _doctor_report(self, arguments: JSONDict) -> JSONDict:
+        return self.surface.doctor_report()
 
     def _plugin_status(self, arguments: JSONDict) -> list[JSONDict]:
         return self.surface.plugin_status(self._manifests(arguments.get("manifests")))

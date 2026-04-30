@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ctxvault"
-version = "0.2.0"
-description = "Inspectable deterministic local context core for AI work"
+version = "0.3.0"
+description = "Compiled context injection with local receipts for AI work"
 readme = "README.md"
 requires-python = ">=3.11"
 license = {text = "Apache-2.0"}

@@ -5,6 +5,8 @@ These public contracts are real but explicitly experimental:
 - `intelligence.py`
 - `Episode`
 - `Workstream`
+- compiled workstream state read model
+- doctor report
 - plugin manifest contract
 - projection receipt contract
 - the first local plugin executor path

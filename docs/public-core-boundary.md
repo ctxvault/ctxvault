@@ -23,6 +23,8 @@ These public contracts are intentionally marked experimental:
 - `src/ctxvault/intelligence.py`
 - `Episode`
 - `Workstream`
+- compiled workstream state read model
+- read-only doctor report
 - plugin manifest and projection receipt contracts
 - the first local plugin executor path
 - projection adapter healthchecks

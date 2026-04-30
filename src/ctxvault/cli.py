@@ -148,6 +148,14 @@ def build_parser() -> argparse.ArgumentParser:
     workstream_intelligence.add_argument("--workstream-id", required=True)
     workstream_intelligence.add_argument("--limit", type=int, default=6)
 
+    compiled_workstream_state = subcommands.add_parser(
+        "compiled-workstream-state",
+        help="Build the experimental compiled workstream state read model",
+    )
+    compiled_workstream_state.add_argument("--root", type=Path, default=project_root())
+    compiled_workstream_state.add_argument("--workstream-id", required=True)
+    compiled_workstream_state.add_argument("--limit", type=int, default=6)
+
     workstream_candidate_create = subcommands.add_parser("workstream-candidate-create", help="Create a durable workstream candidate from a workstream preview")
     workstream_candidate_create.add_argument("--root", type=Path, default=project_root())
     workstream_candidate_create.add_argument("--session-id", required=True)
@@ -349,6 +357,17 @@ def build_parser() -> argparse.ArgumentParser:
     ingest_knowledge.add_argument("--recursive", action="store_true")
     ingest_knowledge.add_argument("--kind")
     ingest_knowledge.add_argument("--title")
+
+    markdown_vault_import = subcommands.add_parser(
+        "markdown-vault-import",
+        help="Import a local Markdown vault through the import/export bridge",
+    )
+    markdown_vault_import.add_argument("--root", type=Path, default=project_root())
+    markdown_vault_import.add_argument("--vault-path", type=Path, required=True)
+    markdown_vault_import.add_argument("--scope-kind", default="project")
+    markdown_vault_import.add_argument("--scope-value", default="ctxvault")
+    markdown_vault_import.add_argument("--recursive", action=argparse.BooleanOptionalAction, default=True)
+    markdown_vault_import.add_argument("--kind")
 
     ingest_prompt = subcommands.add_parser("ingest-prompt", help="Import a local file as a prompt asset")
     ingest_prompt.add_argument("--root", type=Path, default=project_root())
@@ -660,6 +679,9 @@ def build_parser() -> argparse.ArgumentParser:
     sync_conflict_list.add_argument("--limit", type=int, default=50)
     sync_conflict_list.add_argument("--status")
 
+    doctor = subcommands.add_parser("doctor", help="Run read-only local diagnostics")
+    doctor.add_argument("--root", type=Path, default=project_root())
+
     serve_mcp = subcommands.add_parser("serve-mcp", help="Run the stdio MCP transport over the named deterministic surface")
     serve_mcp.add_argument("--root", type=Path, default=project_root())
     serve_mcp.add_argument("--policy-json-path", type=Path)
@@ -815,6 +837,15 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "workstream-intelligence":
             surface = CtxVaultSurface(CtxVault(default_layout(args.root.resolve())))
             result = surface.workstream_intelligence(
+                args.workstream_id,
+                limit=args.limit,
+            )
+            print(json.dumps(result, indent=2, sort_keys=True))
+            return 0
+
+        if args.command == "compiled-workstream-state":
+            surface = CtxVaultSurface(CtxVault(default_layout(args.root.resolve())))
+            result = surface.compiled_workstream_state(
                 args.workstream_id,
                 limit=args.limit,
             )
@@ -1164,6 +1195,20 @@ def main(argv: list[str] | None = None) -> int:
                 recursive=args.recursive,
                 kind=args.kind,
                 title=args.title,
+            )
+            print(json.dumps([receipt.to_dict() for receipt in receipts], indent=2, sort_keys=True))
+            return 0
+
+        if args.command == "markdown-vault-import":
+            vault = CtxVault(default_layout(args.root.resolve()))
+            receipts = import_knowledge_path(
+                vault,
+                args.vault_path.resolve(),
+                scope_kind=args.scope_kind,
+                scope_value=args.scope_value,
+                recursive=args.recursive,
+                kind=args.kind,
+                extensions=(".markdown", ".md"),
             )
             print(json.dumps([receipt.to_dict() for receipt in receipts], indent=2, sort_keys=True))
             return 0
@@ -1823,6 +1868,11 @@ def main(argv: list[str] | None = None) -> int:
             surface = CtxVaultSurface(CtxVault(default_layout(root)))
             result = surface.sync_conflict_list(limit=args.limit, status=args.status)
             print(json.dumps(result, indent=2, sort_keys=True))
+            return 0
+
+        if args.command == "doctor":
+            surface = CtxVaultSurface(CtxVault(default_layout(args.root.resolve())))
+            print(json.dumps(surface.doctor_report(), indent=2, sort_keys=True))
             return 0
 
         if args.command == "serve-mcp":

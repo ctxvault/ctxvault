@@ -147,6 +147,64 @@ class CliBoundaryTests(unittest.TestCase):
                     self.assertFalse(result["write_plan"][0]["will_write"])
                     self.assertFalse((root / output_name).exists())
 
+    def test_compiled_workstream_state_cli_is_read_model(self) -> None:
+        with TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            surface = CtxVaultSurface(CtxVault(default_layout(root)))
+            surface.vault.import_core_fixtures(ROOT / "fixtures" / "core")
+
+            code, stdout = self.run_cli(
+                "compiled-workstream-state",
+                "--root",
+                str(root),
+                "--workstream-id",
+                "ws_20260421_ctxvault_schema",
+            )
+
+            self.assertEqual(code, 0)
+            payload = json.loads(stdout)
+            self.assertEqual(payload["schema_id"], "ctxvault.compiled-workstream-state/v1")
+            self.assertEqual(payload["contract_state"], "experimental_read_model")
+            self.assertEqual(payload["workstream_ref"], "workstream://ws_20260421_ctxvault_schema")
+
+    def test_doctor_cli_is_read_only(self) -> None:
+        with TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+
+            code, stdout = self.run_cli("doctor", "--root", str(root))
+
+            self.assertEqual(code, 0)
+            payload = json.loads(stdout)
+            self.assertEqual(payload["schema_id"], "ctxvault.doctor-report/v1")
+            self.assertEqual(payload["mode"], "read_only")
+            self.assertTrue(all(check["read_only"] for check in payload["checks"]))
+
+    def test_markdown_vault_import_cli_is_bridge_not_plugin(self) -> None:
+        with TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            vault_root = root / "obsidian-vault"
+            nested = vault_root / "Projects"
+            nested.mkdir(parents=True)
+            (vault_root / "index.md").write_text("# Index\n\nCtxVault bridge note.\n", encoding="utf-8")
+            (nested / "decision.markdown").write_text("# Decision\n\nKeep Markdown as source material.\n", encoding="utf-8")
+            (vault_root / "scratch.txt").write_text("txt should stay outside the markdown-vault bridge alias", encoding="utf-8")
+
+            code, stdout = self.run_cli(
+                "markdown-vault-import",
+                "--root",
+                str(root),
+                "--vault-path",
+                str(vault_root),
+                "--scope-kind",
+                "project",
+                "--scope-value",
+                "ctxvault",
+            )
+
+            self.assertEqual(code, 0)
+            receipts = json.loads(stdout)
+            self.assertEqual([Path(receipt["source_path"]).suffix for receipt in receipts], [".markdown", ".md"])
+
     def test_transport_dashboard_reports_aggregated_transport_state(self) -> None:
         with TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)

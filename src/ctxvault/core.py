@@ -23,6 +23,7 @@ from .intelligence import (
     derive_episode_payloads,
     render_manual_note,
 )
+from .compiled_state import build_compiled_workstream_state
 from .layout import VaultLayout
 from .policy import CtxVaultPolicy
 
@@ -922,6 +923,21 @@ class CtxVault:
             workstream_payload,
             knowledge_payloads=knowledge_payloads,
             memory_payloads=memory_payloads,
+        )
+
+    def compiled_workstream_state(
+        self,
+        workstream_id: str,
+        *,
+        limit: int = 6,
+        projection_receipts: list[dict[str, Any]] | None = None,
+    ) -> dict[str, Any]:
+        workstream_payload = self._load_object_payload("workstream", workstream_id)
+        intelligence_report = self.workstream_intelligence(workstream_id, limit=limit)
+        return build_compiled_workstream_state(
+            workstream_payload,
+            intelligence_report=intelligence_report,
+            projection_receipts=projection_receipts,
         )
 
     def create_workstream_candidate(

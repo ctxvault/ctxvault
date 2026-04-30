@@ -13,7 +13,7 @@ from .core import CtxVault
 
 
 SOURCE_CONNECTOR_RECEIPT_SCHEMA_VERSION = "ctxvault.source-connector-receipt/v1"
-SUPPORTED_KNOWLEDGE_EXTENSIONS = {".json", ".md", ".txt"}
+SUPPORTED_KNOWLEDGE_EXTENSIONS = {".json", ".markdown", ".md", ".txt"}
 CONVERSATION_EXPORT_FILE_NAMES = {"conversations.json", "conversation.json", "messages.json"}
 SKIP_DIR_NAMES = {".ctxvault", ".git", "__pycache__", "raw"}
 SKIP_FILE_NAMES = {"search-meta.json"}
@@ -135,9 +135,16 @@ def import_knowledge_path(
     recursive: bool = False,
     kind: str | None = None,
     title: str | None = None,
+    extensions: Iterable[str] | None = None,
 ) -> list[ImportReceipt]:
     resolved = source_path.resolve()
-    sources = [resolved] if resolved.is_file() else list(_iter_knowledge_sources(resolved, recursive=recursive))
+    normalized_extensions = _normalize_extensions(extensions)
+    if resolved.is_file():
+        if normalized_extensions is not None and resolved.suffix.lower() not in normalized_extensions:
+            raise ValueError(f"knowledge source {resolved} does not match allowed extensions")
+        sources = [resolved]
+    else:
+        sources = list(_iter_knowledge_sources(resolved, recursive=recursive, extensions=normalized_extensions))
     receipts: list[ImportReceipt] = []
     for path in sources:
         payload = build_knowledge_payload(
@@ -892,10 +899,16 @@ def _normalize_prompt_payload(
     return normalized
 
 
-def _iter_knowledge_sources(root: Path, *, recursive: bool) -> Iterable[Path]:
+def _iter_knowledge_sources(
+    root: Path,
+    *,
+    recursive: bool,
+    extensions: set[str] | None = None,
+) -> Iterable[Path]:
     if not root.exists():
         raise FileNotFoundError(root)
     iterator = root.rglob("*") if recursive else root.glob("*")
+    allowed_extensions = extensions or SUPPORTED_KNOWLEDGE_EXTENSIONS
     for path in sorted(iterator):
         if not path.is_file():
             continue
@@ -903,7 +916,7 @@ def _iter_knowledge_sources(root: Path, *, recursive: bool) -> Iterable[Path]:
             continue
         if path.name in SKIP_FILE_NAMES:
             continue
-        if path.suffix.lower() not in SUPPORTED_KNOWLEDGE_EXTENSIONS:
+        if path.suffix.lower() not in allowed_extensions:
             continue
         if _infer_knowledge_kind(path) is None:
             continue
@@ -914,6 +927,16 @@ def _load_source_payload(path: Path) -> Any:
     if path.suffix.lower() == ".json":
         return json.loads(path.read_text(encoding="utf-8"))
     return path.read_text(encoding="utf-8")
+
+
+def _normalize_extensions(extensions: Iterable[str] | None) -> set[str] | None:
+    if extensions is None:
+        return None
+    normalized = {extension.lower() if extension.startswith(".") else f".{extension.lower()}" for extension in extensions}
+    unsupported = normalized - SUPPORTED_KNOWLEDGE_EXTENSIONS
+    if unsupported:
+        raise ValueError(f"unsupported knowledge extension filter: {sorted(unsupported)}")
+    return normalized
 
 
 def _body_from_source(path: Path, payload: Any) -> str:
@@ -976,7 +999,7 @@ def _parse_markdown_frontmatter(text: str) -> tuple[dict[str, str], str]:
 
 
 def _headline_title(path: Path) -> str | None:
-    if path.suffix.lower() not in {".md", ".txt"}:
+    if path.suffix.lower() not in {".markdown", ".md", ".txt"}:
         return None
     try:
         for raw_line in path.read_text(encoding="utf-8").splitlines():
@@ -1011,7 +1034,7 @@ def _infer_knowledge_kind(path: Path) -> str | None:
         return "structured_note"
     if "docs" in lower_parts or "design" in name or "spec" in name:
         return "design_note"
-    if path.suffix.lower() in {".md", ".txt"}:
+    if path.suffix.lower() in {".markdown", ".md", ".txt"}:
         return "note"
     return None
 

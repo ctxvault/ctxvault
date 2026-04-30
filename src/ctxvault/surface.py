@@ -9,6 +9,7 @@ from uuid import uuid4
 from .adapters import AdapterRegistry, projection_adapter_healthcheck
 from .backup import emit_backup_bundle
 from .core import ContextBuildRequest, ContextItemInput, CtxVault
+from .doctor import build_doctor_report
 from .policy import CtxVaultPolicy
 from .plugins import LocalPluginExecutorRegistry, PluginRegistry
 from .privacy import scan_privacy_files, scan_privacy_text
@@ -962,6 +963,19 @@ class CtxVaultSurface:
     ) -> dict[str, Any]:
         return self.vault.workstream_intelligence(workstream_id, limit=limit)
 
+    def compiled_workstream_state(
+        self,
+        workstream_id: str,
+        *,
+        limit: int = 6,
+        projection_receipts: list[dict[str, Any]] | None = None,
+    ) -> dict[str, Any]:
+        return self.vault.compiled_workstream_state(
+            workstream_id,
+            limit=limit,
+            projection_receipts=projection_receipts,
+        )
+
     def workstream_candidate_create(
         self,
         session_id: str,
@@ -1519,12 +1533,14 @@ class CtxVaultSurface:
         if workstream.get("approval_state") != "approved":
             raise ValueError(f"workstream {workstream_id} must be approved before projection")
         memories = self._load_projection_memories(scope=workstream["scope"], limit=memory_limit)
+        compiled_state = self.compiled_workstream_state(workstream_id, limit=memory_limit)
         return emit_agents_md_projection(
             root=self.vault.layout.repo_root,
             output_path=output_path,
             receipt_output_path=receipt_output_path,
             workstream_payload=workstream,
             memory_payloads=memories,
+            compiled_state_payload=compiled_state,
         )
 
     def harness_claude_md_emit(
@@ -1539,12 +1555,14 @@ class CtxVaultSurface:
         if workstream.get("approval_state") != "approved":
             raise ValueError(f"workstream {workstream_id} must be approved before projection")
         memories = self._load_projection_memories(scope=workstream["scope"], limit=memory_limit)
+        compiled_state = self.compiled_workstream_state(workstream_id, limit=memory_limit)
         return emit_claude_md_projection(
             root=self.vault.layout.repo_root,
             output_path=output_path,
             receipt_output_path=receipt_output_path,
             workstream_payload=workstream,
             memory_payloads=memories,
+            compiled_state_payload=compiled_state,
         )
 
     def wiki_workstream_markdown_emit(
@@ -1559,13 +1577,18 @@ class CtxVaultSurface:
         if workstream.get("approval_state") != "approved":
             raise ValueError(f"workstream {workstream_id} must be approved before projection")
         memories = self._load_projection_memories(scope=workstream["scope"], limit=memory_limit)
+        compiled_state = self.compiled_workstream_state(workstream_id, limit=memory_limit)
         return emit_wiki_workstream_md_projection(
             root=self.vault.layout.repo_root,
             output_path=output_path,
             receipt_output_path=receipt_output_path,
             workstream_payload=workstream,
             memory_payloads=memories,
+            compiled_state_payload=compiled_state,
         )
+
+    def doctor_report(self) -> dict[str, Any]:
+        return build_doctor_report(self.vault.layout.repo_root)
 
     def backup_emit(
         self,

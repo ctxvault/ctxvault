@@ -15,6 +15,7 @@ def render_agents_md(
     *,
     workstream_payload: dict[str, Any],
     memory_payloads: list[dict[str, Any]],
+    compiled_state_payload: dict[str, Any] | None = None,
 ) -> str:
     scope = workstream_payload.get("scope", {})
     task_labels = workstream_payload.get("task_labels", [])
@@ -56,6 +57,8 @@ def render_agents_md(
             ]
         )
 
+    lines.extend(_compiled_state_lines(compiled_state_payload, heading="Compiled Workstream State"))
+
     lines.extend(["", "## Durable Operating Rules", ""])
     if memory_payloads:
         for memory in memory_payloads:
@@ -90,6 +93,7 @@ def render_claude_md(
     *,
     workstream_payload: dict[str, Any],
     memory_payloads: list[dict[str, Any]],
+    compiled_state_payload: dict[str, Any] | None = None,
 ) -> str:
     scope = workstream_payload.get("scope", {})
     task_labels = workstream_payload.get("task_labels", [])
@@ -131,6 +135,8 @@ def render_claude_md(
             ]
         )
 
+    lines.extend(_compiled_state_lines(compiled_state_payload, heading="Compiled Workstream State"))
+
     lines.extend(["", "## Durable Rules", ""])
     if memory_payloads:
         for memory in memory_payloads:
@@ -165,6 +171,7 @@ def render_wiki_workstream_md(
     *,
     workstream_payload: dict[str, Any],
     memory_payloads: list[dict[str, Any]],
+    compiled_state_payload: dict[str, Any] | None = None,
 ) -> str:
     scope = workstream_payload.get("scope", {})
     task_labels = workstream_payload.get("task_labels", [])
@@ -205,6 +212,8 @@ def render_wiki_workstream_md(
             ]
         )
 
+    lines.extend(_compiled_state_lines(compiled_state_payload, heading="Current Truth"))
+
     lines.extend(["", "## Durable Rules", ""])
     if memory_payloads:
         for memory in memory_payloads:
@@ -235,6 +244,47 @@ def render_wiki_workstream_md(
     return "\n".join(lines).rstrip() + "\n"
 
 
+def _compiled_state_lines(compiled_state_payload: dict[str, Any] | None, *, heading: str) -> list[str]:
+    if not compiled_state_payload:
+        return []
+    current_truth = dict(compiled_state_payload.get("current_truth") or {})
+    summary = dict(current_truth.get("summary") or {})
+    lines = ["", f"## {heading}", ""]
+    summary_text = str(summary.get("text") or "").strip()
+    if summary_text:
+        lines.append(f"- Summary: {summary_text}")
+    for label, key in [
+        ("Decisions", "active_decisions"),
+        ("Constraints", "active_constraints"),
+        ("Open Questions", "open_questions"),
+        ("Next Actions", "next_actions"),
+        ("Reusable Judgments", "reusable_judgments"),
+    ]:
+        items = [
+            str(item.get("text") or "").strip()
+            for item in list(current_truth.get(key) or [])
+            if isinstance(item, dict) and str(item.get("text") or "").strip()
+        ]
+        if not items:
+            continue
+        lines.extend(["", f"### {label}", "", *[f"- {item}" for item in items]])
+    source_refs = [
+        str(ref).strip()
+        for ref in list(compiled_state_payload.get("source_refs") or [])
+        if str(ref).strip()
+    ][:8]
+    if source_refs:
+        lines.extend(["", "### Compiled Source Refs", "", *[f"- `{ref}`" for ref in source_refs]])
+    warnings = [
+        str(warning).strip()
+        for warning in list(compiled_state_payload.get("warnings") or [])
+        if str(warning).strip()
+    ]
+    if warnings:
+        lines.extend(["", "### Advisory Warnings", "", *[f"- {warning}" for warning in warnings]])
+    return lines
+
+
 def emit_agents_md_projection(
     *,
     root: Path,
@@ -242,10 +292,12 @@ def emit_agents_md_projection(
     receipt_output_path: Path,
     workstream_payload: dict[str, Any],
     memory_payloads: list[dict[str, Any]],
+    compiled_state_payload: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     rendered = render_agents_md(
         workstream_payload=workstream_payload,
         memory_payloads=memory_payloads,
+        compiled_state_payload=compiled_state_payload,
     )
     resolved_output = output_path.resolve()
     resolved_output.parent.mkdir(parents=True, exist_ok=True)
@@ -301,10 +353,12 @@ def emit_claude_md_projection(
     receipt_output_path: Path,
     workstream_payload: dict[str, Any],
     memory_payloads: list[dict[str, Any]],
+    compiled_state_payload: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     rendered = render_claude_md(
         workstream_payload=workstream_payload,
         memory_payloads=memory_payloads,
+        compiled_state_payload=compiled_state_payload,
     )
     resolved_output = output_path.resolve()
     resolved_output.parent.mkdir(parents=True, exist_ok=True)
@@ -360,10 +414,12 @@ def emit_wiki_workstream_md_projection(
     receipt_output_path: Path,
     workstream_payload: dict[str, Any],
     memory_payloads: list[dict[str, Any]],
+    compiled_state_payload: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     rendered = render_wiki_workstream_md(
         workstream_payload=workstream_payload,
         memory_payloads=memory_payloads,
+        compiled_state_payload=compiled_state_payload,
     )
     resolved_output = output_path.resolve()
     resolved_output.parent.mkdir(parents=True, exist_ok=True)
