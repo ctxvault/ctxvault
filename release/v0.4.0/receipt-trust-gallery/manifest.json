@@ -124,7 +124,7 @@
     "context_legibility_summary": "context-legibility-summary.json",
     "demo_scorecard": "demo-scorecard.json"
   },
-  "generated_at": "2026-05-06T07:46:50+00:00",
+  "generated_at": "2026-05-06T23:28:09+00:00",
   "no_account": true,
   "no_cloud_service": true,
   "no_hidden_session_scanning": true,
@@ -141,7 +141,7 @@
       "budget_status": "over_budget",
       "kind": "blocked_over_budget_projection",
       "projections_written": 0,
-      "receipt_path": "<blocked-root>/.ctxvault/exports/receipts/ctxextract_20260506t074650z_8bcc6805d5fb.json",
+      "receipt_path": "<blocked-root>/.ctxvault/exports/receipts/ctxextract_20260506t232809z_8bcc6805d5fb.json",
       "selection_status": "over_budget",
       "token_budget": 1,
       "token_estimate": 34,
@@ -175,9 +175,9 @@
     "stale_projection_count": 0
   },
   "projection_output_path": "<legibility-root>/.ctxvault/exports/AGENTS.md",
-  "receipt_path": "<legibility-root>/.ctxvault/exports/receipts/ctxextract_20260506t074650z_87e439ff5838.json",
+  "receipt_path": "<legibility-root>/.ctxvault/exports/receipts/ctxextract_20260506t232809z_87e439ff5838.json",
   "release_id": "v0.4.0",
-  "release_surface": "Core + conditional notarized Mac App Alpha + Demo Vault + Receipt/Trust Gallery",
+  "release_surface": "Core + optional notarized Mac App Alpha + Demo Vault + Receipt/Trust Gallery",
   "schema_id": "ctxvault.v0.4.0-receipt-trust-gallery/v1",
   "selected_slices": [
     {

@@ -1,5 +1,11 @@
 blank_issues_enabled: false
 contact_links:
+  - name: v0.4.0 First-Run Feedback
+    url: https://github.com/ctxvault/ctxvault/issues/new?template=v0.4.0-first-run-feedback.yml
+    about: Use this for Day 0 feedback after trying the v0.4.0 demo, gallery, receipts, or core quick start.
+  - name: Mac App Alpha Feedback
+    url: https://github.com/ctxvault/ctxvault/issues/new?template=mac-app-alpha-feedback.yml
+    about: Use this for notarized Mac App Alpha launch, Gatekeeper, first-run, or feedback-bundle notes.
   - name: v0.2/M2 Developer Framework Feedback
     url: https://github.com/ctxvault/ctxvault/issues/new?template=v0.2-m2-feedback.yml
     about: Use this for projection healthchecks, runtime receipts, review ergonomics, local backup wording, and v0.2 developer-framework feedback.

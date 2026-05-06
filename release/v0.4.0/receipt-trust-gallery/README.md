@@ -1,8 +1,9 @@
 # CtxVault v0.4.0 Receipt And Trust Gallery
 
-Status: ready candidate.
+Status: ready.
 
-This gallery is static, sanitized release evidence for the v0.4.0
+This gallery is available as `index.html` and Markdown/JSON. It is static,
+sanitized release evidence for the v0.4.0
 Core + Demo Vault + Receipt/Trust Gallery release surface. It is generated
 from local deterministic demo runs and does not require an account, cloud
 service, LLM key, provider call, hidden session scan, or runtime control.
@@ -23,7 +24,7 @@ service, LLM key, provider call, hidden session scan, or runtime control.
 ## Written Artifact
 
 - Projection output path: `<legibility-root>/.ctxvault/exports/AGENTS.md`
-- Proof receipt path: `<legibility-root>/.ctxvault/exports/receipts/ctxextract_20260506t074650z_87e439ff5838.json`
+- Proof receipt path: `<legibility-root>/.ctxvault/exports/receipts/ctxextract_20260506t232809z_87e439ff5838.json`
 - Provider call performed: `False`
 - Runtime control performed: `False`
 

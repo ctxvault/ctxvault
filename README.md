@@ -82,6 +82,8 @@ If you are evaluating the project, start with:
   quality checks.
 - `release/v0.4.0/receipt-trust-gallery/` for static selected, omitted,
   blocked, privacy, projection, and proof receipt examples;
+- `release/v0.4.0/receipt-trust-gallery/index.html` for the static
+  Receipt/Trust Gallery page;
 - `docs/v0.4.0-release-notes.md` for the complete local trust-and-handoff
   release scope.
 
@@ -395,6 +397,7 @@ projection evidence are described in:
 
 - `docs/v0.3-compiled-context.md`
 - `docs/v0.4.0-release-notes.md`
+- `release/v0.4.0/receipt-trust-gallery/index.html`
 - `release/v0.4.0/receipt-trust-gallery/README.md`
 - `release/v0.4.0/receipt-trust-gallery/manifest.json`
 - `docs/v0.3.5-release-notes.md`
@@ -427,6 +430,7 @@ replace a separate offsite backup strategy.
 - `docs/workstream-plan-ledger-contract.md`
 - `docs/v0.3-compiled-context.md`
 - `docs/v0.4.0-release-notes.md`
+- `release/v0.4.0/receipt-trust-gallery/index.html`
 - `release/v0.4.0/receipt-trust-gallery/README.md`
 - `release/v0.4.0/receipt-trust-gallery/manifest.json`
 - `docs/v0.3.5-release-notes.md`
@@ -463,8 +467,10 @@ which receipt, slice, projection, or workflow step was hard to trust.
   `.github/ISSUE_TEMPLATE/workflow-pain-point.yml`
 - v0.3.5 first-run UX boundary feedback:
   `.github/ISSUE_TEMPLATE/workflow-pain-point.yml`
-- v0.4.0 Receipt/Trust Gallery or demo feedback:
-  `.github/ISSUE_TEMPLATE/m1-quick-feedback.yml`
+- v0.4.0 First-Run Feedback:
+  `.github/ISSUE_TEMPLATE/v0.4.0-first-run-feedback.yml`
+- Mac App Alpha feedback:
+  `.github/ISSUE_TEMPLATE/mac-app-alpha-feedback.yml`
 - v0.2/M2 Developer Framework Feedback:
   `.github/ISSUE_TEMPLATE/v0.2-m2-feedback.yml`
 - M1 Quick Feedback:

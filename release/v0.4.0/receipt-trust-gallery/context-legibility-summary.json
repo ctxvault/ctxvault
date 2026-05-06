@@ -42,7 +42,7 @@
       ]
     },
     "status": "pass",
-    "summary_text": "Status: pass\nRead sources: 10\nSelected slices: 5\nOmitted slices: 0\nBlocked writes: 0\nRuntime control: disabled\nWrite target: <legibility-root>/.ctxvault/exports/AGENTS.md\nProof receipt: <legibility-root>/.ctxvault/exports/receipts/ctxextract_20260506t074650z_87e439ff5838.json",
+    "summary_text": "Status: pass\nRead sources: 10\nSelected slices: 5\nOmitted slices: 0\nBlocked writes: 0\nRuntime control: disabled\nWrite target: <legibility-root>/.ctxvault/exports/AGENTS.md\nProof receipt: <legibility-root>/.ctxvault/exports/receipts/ctxextract_20260506t232809z_87e439ff5838.json",
     "why_it_matters": [
       "selected refs are the only context intended for the target handoff",
       "omitted and blocked refs stay visible so users can audit missing context",
@@ -52,7 +52,7 @@
       "projection_paths": [
         "<legibility-root>/.ctxvault/exports/AGENTS.md"
       ],
-      "receipt_path": "<legibility-root>/.ctxvault/exports/receipts/ctxextract_20260506t074650z_87e439ff5838.json",
+      "receipt_path": "<legibility-root>/.ctxvault/exports/receipts/ctxextract_20260506t232809z_87e439ff5838.json",
       "target_receipt_path": "<legibility-root>/.ctxvault/exports/receipts/agents-md-projection.json"
     }
   },
