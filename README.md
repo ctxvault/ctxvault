@@ -2,11 +2,13 @@
 
 Know what your AI tools see.
 
-CtxVault is the local trust layer for AI work. It turns local project sources
-into safe, receipt-backed handoffs for AI tools, agents, coding workflows, and
-future API surfaces. It preserves the decisions, constraints, and working state
-that should survive across agents, editors, command-line sessions, and other
-AI work surfaces.
+CtxVault v0.4.0 is a local, reviewable, receipt-backed AI work context handoff
+package. It turns local project sources into safe, receipt-backed handoffs for AI tools, agents, and coding workflows while keeping source evidence, scope, review state, and receipts inspectable.
+
+Category: the local trust layer for AI work.
+
+It preserves decisions, constraints, and working state as local evidence that
+must be reviewed before it influences an AI work surface.
 
 v0.4.0 packages the deterministic context handoff path as a complete local
 trust-and-handoff release. The public core still centers on local source
@@ -21,11 +23,10 @@ which sources were imported, which local context was selected, why it was
 allowed or blocked, how large it is, and which receipt links it to an AI work
 surface.
 
-The roadmap treats this as AI work quality infrastructure: specs define what
-"done" means, context receipts explain what was selected or blocked, and trace
-or runtime receipts can later inspect how AI work happened. v0.4.0 adds a
-static Receipt/Trust Gallery and clearer demo/review materials while keeping
-optional Workbench UX and native wrapper source outside the open-core package.
+The core control question is not how much an agent remembers. It is which past
+context is allowed to influence the next AI work surface, with what source
+evidence, scope, review state, and receipt. v0.4.0 adds a static Receipt/Trust
+Gallery and clearer demo/review materials while keeping optional Workbench UX and native wrapper source outside the open-core package.
 
 This public repository exposes the deterministic trust floor behind that
 source-to-context-to-projection loop:
@@ -76,6 +77,8 @@ If you are evaluating the project, start with:
   and safety checks;
 - `scripts/run_v033_public_review_pack.py` for owner-operated public package
   review before publication;
+- `scripts/run_v040_context_handoff_trial.py` for the v0.4.0 local source to
+  reviewed context to receipt-backed handoff trial;
 - `scripts/run_v034_context_extract_stability.py` for one-click extraction
   stability checks;
 - `scripts/run_v034_context_quality_scorecards.py` for deterministic context
@@ -227,27 +230,21 @@ Run deterministic checks:
 python3 scripts/run_deterministic_checks.py
 ```
 
-Run the v0.3.4 one-click context handoff trial:
+Run the v0.4.0 local context handoff trial:
 
 ```bash
 export PYTHONPATH=src
-export CTXVAULT_TRIAL=/tmp/ctxvault-v034-trial
-
-python3 -m ctxvault.cli init-vault --root "$CTXVAULT_TRIAL"
-python3 -m ctxvault.cli seed-fixtures --root "$CTXVAULT_TRIAL"
-
-python3 -m ctxvault.cli context-extract   --root "$CTXVAULT_TRIAL"   --source-path fixtures/v0.3.4-context-extract/markdown-vault   --source-kind markdown-vault   --recursive   --prepare-query "stable one click extraction privacy projection receipts"   --workstream-ref workstream://ws_20260421_ctxvault_schema   --workstream-id ws_20260421_ctxvault_schema   --project-target workstream-brief
-
-python3 -m ctxvault.cli receipt-inspect --root "$CTXVAULT_TRIAL" --latest --summary
-python3 -m ctxvault.cli doctor --root "$CTXVAULT_TRIAL"
+python3 scripts/run_v040_context_handoff_trial.py --root /tmp/ctxvault-v040-trial --reset
 ```
 
-Run the v0.3.4 deterministic quality and stability scorecards:
+Run the repeatability check through the same v0.4.0 public entrypoint:
 
 ```bash
-python3 scripts/run_v034_context_extract_stability.py --root /tmp/ctxvault-v034-stability
-python3 scripts/run_v034_context_quality_scorecards.py --root /tmp/ctxvault-v034-quality
+python3 scripts/run_v040_context_handoff_trial.py --root /tmp/ctxvault-v040-repeatability --reset
 ```
+
+Lower-level v0.3.4 scorecard scripts remain available for regression evidence,
+but the public v0.4.0 trial entrypoint above is the default path to run first.
 
 Run the v0.3.3 public package review pack:
 
