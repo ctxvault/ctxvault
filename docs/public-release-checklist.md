@@ -1,7 +1,8 @@
 # CtxVault Public Release Checklist
 
-This checklist describes the public release expectations for the v0.4.0 local
-trust-and-handoff package over the v0.3.5 first-run UX boundary and v0.3.4
+This checklist describes the public release expectations for the v0.4.1
+Projection Governance Kernel design preview over the v0.4.0 local
+trust-and-handoff package, v0.3.5 first-run UX boundary, and v0.3.4
 deterministic context extraction milestone.
 
 ## Release Gates
@@ -13,6 +14,8 @@ deterministic context extraction milestone.
 - public schemas, fixtures, CLI, and MCP surfaces are present
 - deterministic tests pass in the extracted tree
 - experimental contracts are labeled clearly
+- v0.4.1 design-preview wording is experimental, non-normative, not a stable
+  external API, and not runtime behavior
 - the public README leads with safe context handoff, receipts, and the local
   source-of-truth hook
 - v0.4.0 wording keeps private Workbench UX and native wrapper source outside

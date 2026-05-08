@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.4.1 - 2026-05-08
+
+- Added the experimental, non-normative Projection Governance Kernel design
+  preview.
+- Added the v0.4.1 object-model schema, example projection and receipt
+  fixtures, approval matrix, projection-rights explanation, and focused tests.
+- Preserved the no-runtime-control, no-stable-external-API, no-external-adapter,
+  no-provider-execution, no-public-beta, and no-hallucination-prevention
+  boundaries.
+
 ## v0.4.0 - 2026-05-06
 
 - Packaged the local trust-and-handoff path as the v0.4.0 Day 0 release.

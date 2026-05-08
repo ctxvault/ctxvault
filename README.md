@@ -26,7 +26,15 @@ surface.
 The core control question is not how much an agent remembers. It is which past
 context is allowed to influence the next AI work surface, with what source
 evidence, scope, review state, and receipt. v0.4.0 adds a static Receipt/Trust
-Gallery and clearer demo/review materials while keeping optional Workbench UX and native wrapper source outside the open-core package.
+Gallery and clearer demo/review materials while keeping optional Workbench UX
+and native wrapper source outside the open-core package.
+
+v0.4.1 is an experimental, non-normative Projection Governance Kernel design
+preview. It explains the object model behind reviewed context handoff: source
+evidence becomes candidate context, review decisions govern projection rights,
+and receipts record selected, omitted, blocked, written, and not-done states.
+It is not shipped v0.4.0 behavior, not a stable external API, and not runtime
+behavior.
 
 This public repository exposes the deterministic trust floor behind that
 source-to-context-to-projection loop:
@@ -52,6 +60,8 @@ source-to-context-to-projection loop:
 - review-gated logical purge for derived slice, search, preview, and selected
   projection data
 - public schemas, fixtures, and deterministic tests
+- experimental v0.4.1 Projection Governance Kernel design-preview docs,
+  schema, fixtures, and focused tests
 
 ## Official Project
 
@@ -79,6 +89,9 @@ If you are evaluating the project, start with:
   review before publication;
 - `scripts/run_v040_context_handoff_trial.py` for the v0.4.0 local source to
   reviewed context to receipt-backed handoff trial;
+- `scripts/run_v040_real_repo_trial.py` for a bounded real-repo trial that
+  writes source packets and projections under the trial root, not into the
+  tested repo;
 - `scripts/run_v034_context_extract_stability.py` for one-click extraction
   stability checks;
 - `scripts/run_v034_context_quality_scorecards.py` for deterministic context
@@ -91,6 +104,12 @@ If you are evaluating the project, start with:
   non-author controlled trial records;
 - `docs/v0.4.0-release-notes.md` for the complete local trust-and-handoff
   release scope.
+- `docs/v0.4.1-release-notes.md` for the experimental design-preview boundary;
+- `docs/v0.4.1-projection-governance-kernel.md` for the v0.4.1 object model;
+- `docs/v0.4.1-projection-rights-schema-explanation.md` for the permission
+  boundary behind candidate context;
+- `docs/v0.4.1-execution-approval-matrix.md` for the no-runtime, no-adapter,
+  no-stable-API release posture.
 
 ## Scope
 
@@ -127,9 +146,23 @@ The public core currently marks these contracts as experimental:
 - context selection receipts
 - context extraction receipts
 - context quality and scorecard receipts
+- v0.4.1 Projection Governance Kernel design-preview schema and fixtures
 
 Experimental means useful and inspectable, but not yet frozen as long-term
 public semantics.
+
+## v0.4.1 Projection Governance Kernel Design Preview
+
+v0.4.1 is a docs/schema/fixture/test design preview. It makes the projection
+control point explicit:
+
+`source evidence -> candidate context -> review decision -> projection -> receipt`
+
+The design preview is experimental and non-normative. It does not ship runtime
+gate wiring, Workbench review UX, provider or model execution, live package or
+registry checks, external memory adapters, durable memory consolidation,
+stable external APIs, public beta readiness, benchmark claims, hallucination
+prevention, Memory OS, or unified agent memory.
 
 ## v0.3.5 First-Run UX Boundary
 
@@ -235,6 +268,19 @@ Run the v0.4.0 local context handoff trial:
 ```bash
 export PYTHONPATH=src
 python3 scripts/run_v040_context_handoff_trial.py --root /tmp/ctxvault-v040-trial --reset
+```
+
+Start with the generated human report:
+
+```text
+/tmp/ctxvault-v040-trial/artifacts/v0.4.0-first-run-report.md
+```
+
+Try the same handoff path on your own local repo without writing projections
+back into that repo:
+
+```bash
+python3 scripts/run_v040_real_repo_trial.py --repo /path/to/your/repo --root /tmp/ctxvault-v040-real-repo-trial --reset
 ```
 
 Run the repeatability check through the same v0.4.0 public entrypoint:
@@ -389,11 +435,15 @@ The checked-in M1 fixture evidence is in:
 
 ## v0.4.0 Evidence
 
-The v0.4.0 local trust-and-handoff release, v0.3.5 first-run UX boundary,
-v0.3.4 context extraction path, v0.3.3 safe handoff path, v0.3.2
-context-selection composer, v0.3.1 local safety, and compiled context
-projection evidence are described in:
+The v0.4.1 Projection Governance Kernel design preview, v0.4.0 local
+trust-and-handoff release, v0.3.5 first-run UX boundary, v0.3.4 context
+extraction path, v0.3.3 safe handoff path, v0.3.2 context-selection composer,
+v0.3.1 local safety, and compiled context projection evidence are described in:
 
+- `docs/v0.4.1-release-notes.md`
+- `docs/v0.4.1-projection-governance-kernel.md`
+- `docs/v0.4.1-projection-rights-schema-explanation.md`
+- `docs/v0.4.1-execution-approval-matrix.md`
 - `docs/v0.3-compiled-context.md`
 - `docs/v0.4.0-release-notes.md`
 - `release/v0.4.0/receipt-trust-gallery/index.html`
@@ -429,6 +479,10 @@ replace a separate offsite backup strategy.
 - `docs/experimental-contract-evolution-policy.md`
 - `docs/workstream-plan-ledger-contract.md`
 - `docs/v0.3-compiled-context.md`
+- `docs/v0.4.1-release-notes.md`
+- `docs/v0.4.1-projection-governance-kernel.md`
+- `docs/v0.4.1-projection-rights-schema-explanation.md`
+- `docs/v0.4.1-execution-approval-matrix.md`
 - `docs/v0.4.0-release-notes.md`
 - `release/v0.4.0/receipt-trust-gallery/index.html`
 - `release/v0.4.0/receipt-trust-gallery/README.md`

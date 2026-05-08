@@ -13,6 +13,12 @@ SCHEMA_FILES = {
     "core": ROOT / "schemas" / "json" / "ctxvault-core-v0.schema.json",
     "governance": ROOT / "schemas" / "json" / "ctxvault-governance-v0.schema.json",
     "controls": ROOT / "schemas" / "json" / "ctxvault-controls-v0.schema.json",
+    "projection_governance_kernel_v041": (
+        ROOT
+        / "schemas"
+        / "json"
+        / "ctxvault-projection-governance-kernel-v041.schema.json"
+    ),
 }
 
 FIXTURE_MAP = {
@@ -34,6 +40,20 @@ FIXTURE_MAP = {
     ROOT / "fixtures" / "controls" / "protection-policy.json": ("controls", "ProtectionPolicy"),
     ROOT / "fixtures" / "controls" / "rollback-decision.json": ("controls", "RollbackDecision"),
     ROOT / "fixtures" / "controls" / "projection-receipt.json": ("controls", "ProjectionReceipt"),
+    ROOT
+    / "fixtures"
+    / "v0.4.1-projection-governance-kernel"
+    / "example-projection.json": (
+        "projection_governance_kernel_v041",
+        "ProjectionGovernanceKernelProjection",
+    ),
+    ROOT
+    / "fixtures"
+    / "v0.4.1-projection-governance-kernel"
+    / "example-receipt.json": (
+        "projection_governance_kernel_v041",
+        "ProjectionGovernanceKernelReceipt",
+    ),
 }
 
 

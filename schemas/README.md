@@ -15,6 +15,7 @@ schemas/
     ctxvault-core-v0.schema.json
     ctxvault-governance-v0.schema.json
     ctxvault-controls-v0.schema.json
+    ctxvault-projection-governance-kernel-v041.schema.json
   python/
     pydantic_models_v0.py
     governance_models_v0.py
@@ -35,6 +36,10 @@ schemas/
   - operational control objects
   - backup receipts, protection policy rules, rollback decisions, and
     projection receipts
+- `ctxvault-projection-governance-kernel-v041.schema.json`
+  - v0.4.1 schema explanation objects
+  - source evidence, candidate context, review decisions, projections, handoff
+    packet references, and receipt states for reviewed context handoff
 
 ## Canonical rules
 
