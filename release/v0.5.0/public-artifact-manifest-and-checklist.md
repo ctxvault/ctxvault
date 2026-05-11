@@ -41,10 +41,9 @@ Manual review checklist:
 
 ## Hosted Publication Gate
 
-The v0.5.0 public release artifacts are prepared locally. Hosted publication,
-tag creation, push, announcement copy, and a GitHub or Forgejo release page
-remain separate actions and should run only from a clean reviewed release
-branch with this claim boundary intact.
+The v0.5.0 public release artifacts were published from a clean reviewed
+release branch with this claim boundary intact. A private Forgejo mirror update,
+announcement copy, and contributor issue creation remain separate actions.
 
 This public artifact set intentionally excludes private release-readiness
 fixtures, private dogfood receipts, specific local dry-run repository
