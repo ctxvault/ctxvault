@@ -15,6 +15,12 @@ portable context packets for AI tools, agents, and coding workflows.
 
 ## What Is New
 
+- Bilingual mechanism notes for governed context projection:
+  `docs/mechanism/governed-context-projection.md` and
+  `docs/mechanism/governed-context-projection.zh.md`.
+- Release-bound mechanism note copies:
+  `release/v0.5.0/mechanism-note-governed-context-projection.md` and
+  `release/v0.5.0/mechanism-note-governed-context-projection.zh.md`.
 - Public-safe evidence page for the v0.5.0 proof scene.
 - Static demo script for walking through evidence, caveats, blocked material,
   manifests, and receipts.
@@ -46,6 +52,8 @@ PYTHONPATH=src python3 -m unittest discover -s tests
 Then inspect:
 
 - `README.md`
+- `docs/mechanism/governed-context-projection.md`
+- `docs/mechanism/governed-context-projection.zh.md`
 - `release/v0.5.0/v0.5.0-public-evidence-page-draft.md`
 - `release/v0.5.0/v0.5.0-public-demo-script-draft.md`
 - `examples/v0.5.0-governed-context-projection/README.md`

@@ -104,6 +104,10 @@ If you are evaluating the project, start with:
 
 - the Quick Start below for a clean deterministic run;
 - `release/v0.5.0/RELEASE_NOTES.md` for the v0.5.0 release boundary;
+- `docs/mechanism/governed-context-projection.md` for the v0.5.0 mechanism
+  note;
+- `docs/mechanism/governed-context-projection.zh.md` for the Chinese
+  mechanism note;
 - `release/v0.5.0/v0.5.0-public-evidence-page-draft.md` for the public-safe
   aggregate OSS dry-run evidence;
 - `release/v0.5.0/v0.5.0-public-demo-script-draft.md` for a static walkthrough;
@@ -190,6 +194,13 @@ This release demonstrates the shape with public-safe aggregate evidence and a
 sanitized example. It does not publish private dogfood receipts, private local
 paths, raw source excerpts, provider/model outputs, or target repository
 writes.
+
+Mechanism notes:
+
+- `docs/mechanism/governed-context-projection.md`
+- `docs/mechanism/governed-context-projection.zh.md`
+- `release/v0.5.0/mechanism-note-governed-context-projection.md`
+- `release/v0.5.0/mechanism-note-governed-context-projection.zh.md`
 
 Allowed wording:
 
