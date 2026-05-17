@@ -67,7 +67,12 @@ class V062PackageAndOutreachPreflightTests(unittest.TestCase):
         matrix = json.loads(APPROVAL_MATRIX.read_text(encoding="utf-8"))
 
         self.assertEqual(matrix["schema_id"], "ctxvault.v062-package-outreach-approval-matrix/v1")
-        self.assertEqual(matrix["status"], "local_preflight_only")
+        self.assertEqual(matrix["status"], "owner_options_selected_local_preparation_only")
+        self.assertEqual(matrix["owner_selected_options"]["public-preflight-push"]["selected_option"], "B")
+        self.assertEqual(matrix["owner_selected_options"]["package-registry-target"]["selected_option"], "A")
+        self.assertEqual(matrix["owner_selected_options"]["package-publishing-mechanism"]["selected_option"], "A")
+        self.assertEqual(matrix["owner_selected_options"]["external-outreach-channel"]["selected_option"], "B")
+        self.assertEqual(matrix["owner_selected_options"]["maintainer-outreach"]["selected_option"], "A")
         self.assertGreaterEqual(len(matrix["no_approval_executed"]), 4)
 
         required_ids = {item["id"]: item for item in matrix["approval_required"]}

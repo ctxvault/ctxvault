@@ -1,7 +1,29 @@
 {
   "schema_id": "ctxvault.v062-package-outreach-approval-matrix/v1",
   "version": "v0.6.2",
-  "status": "local_preflight_only",
+  "status": "owner_options_selected_local_preparation_only",
+  "owner_selected_options": {
+    "public-preflight-push": {
+      "selected_option": "B",
+      "decision": "Do not push the package/outreach preflight commit yet."
+    },
+    "package-registry-target": {
+      "selected_option": "A",
+      "decision": "TestPyPI first, then PyPI."
+    },
+    "package-publishing-mechanism": {
+      "selected_option": "A",
+      "decision": "PyPI trusted publishing."
+    },
+    "external-outreach-channel": {
+      "selected_option": "B",
+      "decision": "Package-first announcement after package verification."
+    },
+    "maintainer-outreach": {
+      "selected_option": "A",
+      "decision": "No maintainer outreach for v0.6.2."
+    }
+  },
   "no_approval_executed": [
     {
       "id": "v062-package-metadata-hardening",

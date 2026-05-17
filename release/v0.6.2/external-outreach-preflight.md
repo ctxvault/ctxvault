@@ -164,5 +164,4 @@ Outreach requires explicit approval of:
 - whether package install can be mentioned
 - response policy
 - rollback/correction action
-- whether maintainer outreach is allowed at all
-
+- confirmation that maintainer outreach remains blocked for v0.6.2
