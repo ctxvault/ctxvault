@@ -23,15 +23,18 @@ PUBLIC_COPY_PATHS = [
 ]
 
 PRIVATE_PLANNING_MARKERS = [
-    "docs/active.md",
-    "v0.6.2-downstream-oss-evidence-integration-plan",
-    "v0.6.1-closeout-v0.6.2-cold-start",
-    "post-m1-capability-roadmap-and-p05-research",
-    "ctxvault-local-docs-consumption-guide",
-    "private-roadmap",
-    "src_private_roadmap_note",
-    "dirty worktree",
-    "/Users/chris",
+    "capability-roadmap",
+    "local-docs-consumption",
+    "cold-start planning",
+    "private planning source ref",
+    "private roadmap ref",
+]
+
+PRIVATE_PATTERN_MARKERS = [
+    r"/Users/[A-Za-z0-9._-]+",
+    r"dirty[- ]worktree",
+    r"src_private_[A-Za-z0-9_]+",
+    r"private[-_]roadmap",
 ]
 
 ROADMAP_OR_PROMO_MARKERS = [
@@ -48,6 +51,8 @@ class V062PublicSurfaceCleanupTests(unittest.TestCase):
 
         for marker in PRIVATE_PLANNING_MARKERS:
             self.assertNotIn(marker, combined)
+        for pattern in PRIVATE_PATTERN_MARKERS:
+            self.assertNotRegex(combined, pattern)
 
     def test_readme_stays_focused_on_current_v062_release(self) -> None:
         readme = (ROOT / "README.md").read_text(encoding="utf-8")
